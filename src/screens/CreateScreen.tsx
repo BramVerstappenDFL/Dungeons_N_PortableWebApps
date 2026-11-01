@@ -20,6 +20,13 @@ const SPECIES_TRAIT: Record<string, string> = {
   goliath: 'Giant ancestry', halfling: 'Luck', human: 'Resourceful, skillful', orc: 'Relentless endurance', tiefling: 'Fiendish legacy',
 };
 
+/** A 27-point spread for a class: 15 in its key ability, then CON and DEX, ending 8. */
+function suggestedScores(key: Ability): AbilityScores {
+  const order = [...new Set<Ability>([key, 'con', 'dex', 'wis', 'cha', 'int', 'str'])];
+  const values = [15, 14, 13, 12, 10, 8];
+  return Object.fromEntries(order.map((a, i) => [a, values[i]])) as AbilityScores;
+}
+
 /** Default +2/+1: the class key ability if the background offers it, then the best other option. */
 function defaultBoosts(allowed: Ability[], key: Ability, base: AbilityScores): Partial<Record<Ability, number>> {
   if (!allowed.length) return {};
@@ -37,7 +44,7 @@ export function CreateScreen() {
   const [backgroundId, setBackgroundId] = useState(BACKGROUNDS[0].id);
   const [classId, setClassId] = useState('fighter');
   const [classSkills, setClassSkills] = useState<string[]>([]);
-  const [scores, setScores] = useState<AbilityScores>({ str: 15, dex: 14, con: 13, int: 8, wis: 12, cha: 10 });
+  const [scores, setScores] = useState<AbilityScores>(() => suggestedScores('str'));
   const [boosts, setBoosts] = useState<Partial<Record<Ability, number>> | null>(null);
 
   const cls = classById(classId)!;
@@ -149,7 +156,7 @@ export function CreateScreen() {
               <div className="grid2">
                 {CLASSES.map((k) => (
                   <button key={k.id} className={k.id === classId ? 'cls is-on' : 'cls'} aria-pressed={k.id === classId}
-                    onClick={() => { setClassId(k.id); setClassSkills([]); setBoosts(null); }}>
+                    onClick={() => { setClassId(k.id); setClassSkills([]); setBoosts(null); setScores(suggestedScores(KEY_ABILITY[k.id] ?? 'str')); }}>
                     <span style={{ font: '600 18px/1.15 var(--font-heading)' }}>{k.name}</span>
                     <span className="muted">Hit die d{k.hitDie}</span>
                     <span className="muted">Key: {ABILITY_NAMES[KEY_ABILITY[k.id] ?? 'str']}</span>
