@@ -114,9 +114,24 @@ const backgrounds = load('backgrounds').map((b) => {
   return { id: short(b.id), name: t(b.id, 'name'), skills, abilities, description: t(b.id, 'description') ?? '' };
 });
 
+const weapons = load('weapons').map((w) => {
+  const f = w.fields;
+  const tags = w.tags || [];
+  const props = tags
+    .filter((tag) => !['simple', 'martial', 'melee', 'ranged'].includes(tag) && !tag.startsWith('mastery.'))
+    .map((tag) => tag.replace('property.', ''));
+  return {
+    id: short(w.id), name: t(w.id, 'name'), category: f.category, range: f.range,
+    damage: String(f.damage), damageType: f.damageType, versatileDamage: f.versatileDamage,
+    normalRange: f.normalRange, longRange: f.longRange, properties: props, mastery: f.mastery,
+    weight: f.weight ?? 0,
+  };
+});
+
 const write = (name, data) => writeFileSync(new URL(name, outDir), JSON.stringify(data));
 write('spells.json', spells);
 write('classes.json', classes);
 write('species.json', species);
 write('backgrounds.json', backgrounds);
-console.log(`spells: ${spells.length}, classes: ${classes.length}, species: ${species.length}, backgrounds: ${backgrounds.length}`);
+write('weapons.json', weapons);
+console.log(`spells: ${spells.length}, classes: ${classes.length}, species: ${species.length}, backgrounds: ${backgrounds.length}, weapons: ${weapons.length}`);

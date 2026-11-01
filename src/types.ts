@@ -43,6 +43,22 @@ export interface Spell {
   cantripScaling?: boolean;
 }
 
+export interface WeaponData {
+  id: string;
+  name: string;
+  category: 'simple' | 'martial';
+  range: 'melee' | 'ranged';
+  damage: string; // e.g. "1d8" or "1"
+  damageType: string;
+  versatileDamage?: string;
+  normalRange?: number;
+  longRange?: number;
+  properties: string[];
+  mastery?: string;
+  weight: number;
+}
+
+export type ItemKind = 'weapon' | 'gear' | 'consumable';
 export interface Item {
   id: string;
   name: string;
@@ -50,6 +66,9 @@ export interface Item {
   weight: number; // lb per item
   notes: string;
   equipped: boolean;
+  kind: ItemKind;
+  weaponId?: string; // SRD weapon this item uses
+  effect?: string; // dice expression rolled on Use, e.g. "2d4+2"
 }
 export interface Currency { cp: number; sp: number; ep: number; gp: number; pp: number }
 
@@ -63,6 +82,23 @@ export interface RollLogEntry {
   detail: string;
   time: number;
   crit?: 'hit' | 'miss';
+}
+
+export type NoteTag = 'Session' | 'NPC' | 'Quest' | 'Loot';
+export interface Note {
+  id: string;
+  tag: NoteTag;
+  title: string;
+  body: string;
+  pinned: boolean;
+  createdAt: number;
+}
+
+export type EconomySlot = 'action' | 'bonus' | 'reaction';
+export interface CombatState {
+  round: number;
+  initiative: number | null;
+  eco: Record<EconomySlot, boolean>; // true = used
 }
 
 export type ScoreMethod = 'standard' | 'pointbuy' | 'manual';
@@ -96,7 +132,10 @@ export interface Character {
   inventory: Item[];
   currency: Currency;
   rollLog: RollLogEntry[];
-  notes: string;
+  xp: number;
+  inspiration: boolean;
+  notes: Note[];
+  combat: CombatState;
   creation?: CreationInfo;
   createdAt: number;
   updatedAt: number;

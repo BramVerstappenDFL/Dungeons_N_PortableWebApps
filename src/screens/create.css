@@ -1,0 +1,13 @@
+.pick { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 12px; box-sizing: border-box; font: inherit; font-size: 16px; font-weight: 500; color: var(--ink); text-align: left; background: var(--paper); border: 0; border-top: 2px solid var(--ink); cursor: pointer; }
+.pick:first-child { border-top: 0; }
+.pick:hover { background: color-mix(in srgb, var(--ink) 9%, transparent); }
+.pick.is-on { background: var(--accent-100); }
+.pick .gr-row__pip { width: 10px; height: 10px; flex: none; }
+.pick.is-on .gr-row__pip { background: var(--accent); }
+.cls { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px; min-height: 96px; box-sizing: border-box; font: inherit; color: var(--ink); text-align: left; background: var(--paper); border: 2px solid var(--ink); box-shadow: var(--shadow-sm); cursor: pointer; }
+.cls:hover { background: var(--accent-100); }
+.cls.is-on { background: var(--accent-100); box-shadow: 4px 4px 0 var(--accent); }
+.progress-seg { flex: 1; height: 6px; background: var(--neutral-300); border: 2px solid var(--ink); }
+.progress-seg.on { background: var(--accent); }
+.abrow { display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 12px; border-top: 2px solid var(--ink); }
+.abrow:first-child { border-top: 0; }

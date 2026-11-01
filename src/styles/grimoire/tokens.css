@@ -1,0 +1,264 @@
+/* Grimoire — generated from tokens.json */
+:root, [data-theme="parchment"] {
+  --ink: #1f1710; /* Text, every 2px border and every hard shadow. Iron-gall brown-black on parchment, candle-bone on the dungeon theme. Reads 13.5:1 on `bg` and 15.5:1 on `paper` in parchment; 15.1:1 and 13.6:1 in dungeon. */
+  --text: var(--ink); /* Body copy on `bg`, `paper` and `desk`. Same value as `ink`; kept as its own name for text. */
+  --divider: var(--ink); /* Window, popover and card borders. Dividers are solid ink, never a grey hairline. */
+  --bg: #ece0c4; /* App ground behind the chronicle and inside popover inputs. */
+  --desk: #dccba5; /* Table ground for the encounter view and campaign home; always carries the 32px battle-mat grid (`grid-line`). */
+  --grid-line: #1f171024; /* The 1px lines of the battle-mat grid on `desk`. Decoration only. */
+  --paper: #f8f0da; /* Windows, cards, popovers, inputs, player message boxes and secondary buttons. Also the text on `ink` buttons. */
+  --neutral-200: #e2d4b2; /* Code and dice-formula blocks, neutral chips, hover fill on rows. */
+  --neutral-300: #ccbb93; /* Empty cells of the hit-point bar. */
+  --neutral-400: #8d7e61; /* Locked checkboxes and dots for things with no tincture. Not for text (3.0:1 on `bg`). */
+  --text-muted: #5b4b37; /* Secondary text: item weights, spell components, initiative sub-lines. 6.4:1 on `bg`, 7.4:1 on `paper` in parchment; 8.1:1 and 7.3:1 in dungeon. */
+  --placeholder: #756647; /* Input placeholders on `paper` (4.9:1 in both themes). Never for labels or values. */
+  --on-accent: #f8f0da; /* Text and icons on an `accent` fill (hovered primary button, selection). Swaps to dark in the dungeon theme where `accent` is light. */
+  --on-gilt: #1f1710; /* Text on a `gilt` fill (Roll button, critical result, acting turn). Dark in both themes. */
+  --accent: #27408b; /* Lapis, the one interactive colour: focus ring, selected rows, streaming caret, text selection, primary-button hover. Also tincture 1. */
+  --accent-100: #dfe4f5; /* Selected row fill, hint ground, secondary-button hover. */
+  --accent-200: #c3cdec; /* Entity highlight fill; striped heads of lapis windows. */
+  --accent-300: #98a8dc; /* Border of the hint notice. */
+  --accent-600: #1f3475; /* Darker accent step (defined, rarely used). */
+  --accent-700: #192a5f; /* Links in narration and the hint heading. */
+  --accent-800: #131f47; /* Text on `accent-100` (hint notice). */
+  --accent-900: #0d1530; /* Deepest accent step. */
+  --verdant-200: #d3e4c3; /* Ground of buff chips and the success notice: active effects, prepared spells, rest complete. */
+  --verdant-300: #a9cc92; /* Border of verdant chips. */
+  --verdant-500: #3f7d3a; /* Healthy hit points and tincture 5. Fill and icon colour, not text on `paper`. */
+  --verdant-900: #17321a; /* Text on verdant chips and the success notice (10:1 on `verdant-200`). */
+  --rubric: #b3261e; /* Danger: errors (dashed border), critical hit points, natural 1, destructive buttons, drop caps. As text it reads 5.7:1 on `paper` in parchment and 6.1:1 in dungeon; always pair with a word or icon. Tincture 6. */
+  --rubric-100: #f6d9d3; /* Ground of the error notice, natural-1 result and debuff chip border tint. */
+  --gilt: #d29a1c; /* Gold leaf: the Roll button, critical result, the acting row, inspiration. Fill only, never text (use `gilt-700`). Tincture 3 and the warning colour. */
+  --gilt-100: #f6e6b4; /* Ground of the acting row and the warning notice. */
+  --gilt-700: #6e4a00; /* Text and icons on `gilt-100` (warning notice, acting tag). */
+  --ember: #d9531e; /* Tincture 2: orange. Fill and stripes, not text. */
+  --ember-tint: #f8d3bf; /* Highlight fill under an ember entity. */
+  --amethyst: #7b3a9e; /* Tincture 4: purple, the arcane. Fill and stripes; 6.3:1 on `paper` in parchment. */
+  --tincture-1: var(--accent); /* Tincture palette, assigned in order to party members, spell schools and entities: lapis. */
+  --tincture-2: var(--ember); /* Tincture 2: ember orange. */
+  --tincture-3: var(--gilt); /* Tincture 3: gilt yellow. */
+  --tincture-4: var(--amethyst); /* Tincture 4: amethyst purple. */
+  --tincture-5: var(--verdant-500); /* Tincture 5: verdant green. */
+  --tincture-6: var(--rubric); /* Tincture 6: rubric red. */
+  --shadow-sm: 2px 2px 0 #1f1710; /* Small secondary buttons, ability boxes, dice keys, chips at rest. */
+  --shadow-md: 4px 4px 0 #1f1710; /* Windows, cards, the dice tray. */
+  --shadow-lg: 6px 6px 0 #1f1710; /* Popovers, menus, the character inspector. */
+  --shadow-focus: 6px 6px 0 #27408b; /* Focused window: the shadow takes its tincture (lapis shown). */
+  --shadow-hover: 3px 3px 0 #1f1710; /* Primary button on hover; player message boxes. */
+  --shadow-press: 1px 1px 0 #1f1710; /* Any pressed button, together with translate(2px,2px). */
+  --shadow-accent: 3px 3px 0 #27408b; /* Primary (ink) buttons at rest. */
+  --shadow-gilt: 3px 3px 0 #1f1710; /* The Roll button: ink in parchment, gilt halo in dungeon. */
+}
+[data-theme="dungeon"] {
+  --ink: #f1e6c8;
+  --text: var(--ink);
+  --divider: var(--ink);
+  --bg: #15110d;
+  --desk: #0f0c09;
+  --grid-line: #f1e6c812;
+  --paper: #231b14;
+  --neutral-200: #30261c;
+  --neutral-300: #45382a;
+  --neutral-400: #7a6b50;
+  --text-muted: #b8a888;
+  --placeholder: #978869;
+  --on-accent: #10142b;
+  --accent: #93a6f0;
+  --accent-100: #1e2547;
+  --accent-200: #2b3666;
+  --accent-300: #4a5ba3;
+  --accent-600: #b2c0f5;
+  --accent-700: #c9d3f8;
+  --accent-800: #dfe5fb;
+  --accent-900: #eef1fe;
+  --verdant-200: #1f3322;
+  --verdant-300: #3d6b40;
+  --verdant-500: #72c06b;
+  --verdant-900: #d0ecc8;
+  --rubric: #f0786b;
+  --rubric-100: #3b1b18;
+  --gilt: #e6b43c;
+  --gilt-100: #3a2d0c;
+  --gilt-700: #f0cd75;
+  --ember: #f08a56;
+  --ember-tint: #4a2514;
+  --amethyst: #c58be6;
+  --tincture-1: var(--accent);
+  --tincture-2: var(--ember);
+  --tincture-3: var(--gilt);
+  --tincture-4: var(--amethyst);
+  --tincture-5: var(--verdant-500);
+  --tincture-6: var(--rubric);
+  --shadow-sm: 2px 2px 0 #7a5c1f;
+  --shadow-md: 4px 4px 0 #7a5c1f;
+  --shadow-lg: 6px 6px 0 #7a5c1f;
+  --shadow-focus: 6px 6px 0 #93a6f0;
+  --shadow-hover: 3px 3px 0 #7a5c1f;
+  --shadow-press: 1px 1px 0 #7a5c1f;
+  --shadow-accent: 3px 3px 0 #93a6f0;
+  --shadow-gilt: 3px 3px 0 #e6b43c;
+}
+:root {
+  --space-2: 2px; /* Gap between rows in lists; HP cell gap. */
+  --space-4: 4px; /* Chip vertical padding. */
+  --space-6: 6px; /* Icon-to-label gap in chips; window head padding. */
+  --space-8: 8px; /* Gap in inline rows; menu row padding. */
+  --space-10: 10px; /* Window head left padding; chip side padding. */
+  --space-12: 12px; /* Gap between window sections; popover row side padding. */
+  --space-16: 16px; /* Card padding; top bar inset; gap between windows. */
+  --space-20: 20px; /* Stage padding in previews; sidebar padding. */
+  --space-24: 24px; /* Dice-tray gap; section padding inside sheets. */
+  --space-32: 32px; /* Battle-mat grid pitch; gap between sheet columns. */
+  --space-48: 48px; /* Space between major regions of a screen. */
+  --space-64: 64px; /* Space around the screen title on the campaign home. */
+  --radius-none: 0; /* Every window, card, button, input, chip and highlight. */
+  --radius-token: 50%; /* Character and monster tokens (the disc with an initial or portrait) in initiative rows. Nothing else. */
+  --control-xs: 24px; /* Icon buttons in window heads and rows. */
+  --control-sm: 30px; /* Small buttons, filter inputs. */
+  --control-md: 40px; /* Buttons, inputs, steppers. */
+  --control-lg: 56px; /* Dice keys and large icon buttons. */
+  --stroke: 2px; /* Every structural border. */
+  --stroke-thin: 1px; /* Chip, notice and card inner-plate borders. */
+  --window-width: 420px; /* Default width of a sheet or chronicle window. */
+  --grid-pitch: 32px; /* Battle-mat grid cell on `desk`. */
+  --font-heading: "Cinzel", "Trajan Pro", Georgia, serif;
+  --font-body: "Alegreya", Georgia, serif;
+  --font-initial: "Uncial Antiqua", "Cinzel", serif;
+  --text-screen-title: 600 40px/1.1 var(--font-heading); /* The one line on the campaign home desk. */
+  --text-sheet-title: 600 28px/1.15 var(--font-heading); /* Character or monster name at the top of a full sheet. */
+  --text-window-title: 600 15px/1.2 var(--font-heading); /* Window title, boxed in paper on the hatched head. */
+  --text-panel-title: 600 14px/1.2 var(--font-heading); /* Popover, card and inspector titles. */
+  --text-stat-number: 600 34px/1.1 var(--font-heading); /* Ability modifier and the total of a dice roll (56px for the roll total). */
+  --text-stat-score: 600 16px/1.2 var(--font-heading); /* Ability score in its small box, initiative numbers, HP figures. */
+  --text-narration: 400 18px/1.6 var(--font-body); /* Game Master text in the chronicle. Player boxes use 17px at line-height 1.45. */
+  --text-narration-side: 400 16px/1.55 var(--font-body); /* Chronicle text inside side windows and narrow columns. */
+  --text-lead: 400 19px/1.5 var(--font-body); /* Sentence under the screen title. */
+  --text-ui: 500 16px/1.35 var(--font-body); /* Buttons, menu rows, sidebar names, input text. */
+  --text-ui-small: 400 14.5px/1.4 var(--font-body); /* Notices, card body text, popover text. */
+  --text-control: 500 13.5px/1.3 var(--font-body); /* Chips, small buttons, filter inputs. */
+  --text-meta: 400 12.5px/1.35 var(--font-body); /* Sub-lines, weights, timestamps. The smallest size in the system. */
+  --text-flavor: italic 400 16px/1.5 var(--font-body); /* Italic flavour text and rules asides on cards. */
+  --text-group-label: 700 12px/1.3 var(--font-body); /* Uppercase group and field labels in menus, cards and ability boxes, in `text-muted`. */
+  --text-tag: 700 11px/1.2 var(--font-body); /* Uppercase paper-on-ink tag on results, turns and secret messages. */
+  --text-drop-cap: 400 58px/0.8 var(--font-initial); /* Illuminated first letter of a narration block, floated left, in `rubric`. First paragraph of a scene only. */
+}
+.screen-title {
+  font-family: var(--font-heading);
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.sheet-title {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.window-title {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.panel-title {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.stat-number {
+  font-family: var(--font-heading);
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.stat-score {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.narration {
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.6;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.narration-side {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.lead {
+  font-family: var(--font-body);
+  font-size: 19px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.ui {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.ui-small {
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  line-height: 1.4;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.control {
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.meta {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.35;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.flavor {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-style: italic;
+}
+.group-label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+.tag {
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.drop-cap {
+  font-family: var(--font-initial);
+  font-size: 58px;
+  line-height: 0.8;
+  font-weight: 400;
+  letter-spacing: 0;
+}
