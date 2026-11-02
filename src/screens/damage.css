@@ -1,0 +1,41 @@
+.key { height: 56px; font: 600 24px/1 var(--font-heading); color: var(--ink); background: var(--paper); border: 2px solid var(--ink); box-shadow: var(--shadow-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.key:hover { background: var(--accent-100); }
+.key:active { transform: translate(2px, 2px); box-shadow: var(--shadow-press); }
+.key--fn { font: 500 15px/1 var(--font-body); background: var(--neutral-200); }
+.dtype { font: inherit; cursor: pointer; min-height: 36px; }
+.dtype.is-on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* Hit point feedback. Damage: hit, shake, drain. Heal: cells grow back, left to right. Temp HP: a ward stamps on from the right. */
+.gr-hp { position: relative; }
+.hp-float { position: absolute; right: 0; top: -40px; display: flex; align-items: center; gap: 5px; padding: 3px 9px; border: 2px solid var(--ink); box-shadow: var(--shadow-sm); font: 600 22px/1 var(--font-heading); pointer-events: none; white-space: nowrap; }
+.hp-float .gr-ico { width: 16px; height: 16px; stroke-width: 2.5; }
+.fx-dmg .gr-hp__cells { animation: hp-shake .36s steps(6) both; }
+@keyframes hp-shake { 0%, 100% { transform: none; } 17% { transform: translateX(-5px); } 33% { transform: translateX(4px); } 50% { transform: translateX(-3px); } 67% { transform: translateX(2px); } 83% { transform: translateX(-1px); } }
+.gr-hp__cells span.lost { animation: hp-lost .75s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--d, 0) * 45ms); }
+@keyframes hp-lost { 0% { background: var(--paper); } 12% { background: var(--rubric); transform: scaleY(1.35); } 55% { background: var(--rubric); transform: scaleY(1); } 100% { background: var(--neutral-300); } }
+.win-dmg { animation: win-dmg .5s steps(1) both; }
+@keyframes win-dmg { 0%, 50% { box-shadow: 6px 6px 0 var(--rubric); transform: translate(-2px, -2px); } 100% { box-shadow: var(--shadow-md); transform: none; } }
+.num-dmg { animation: num-dmg .5s steps(4) both; }
+@keyframes num-dmg { 0% { color: var(--rubric); transform: translateX(-3px); } 50% { color: var(--rubric); transform: translateX(3px); } 100% { color: inherit; transform: none; } }
+.float-dmg { background: var(--rubric-100); color: var(--rubric); border-color: var(--rubric); animation: float-dmg 1.2s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes float-dmg { 0% { opacity: 0; transform: scale(1.6); } 12% { opacity: 1; transform: scale(1); } 70% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(14px); } }
+.gr-hp__cells span.gain { transform-origin: bottom; animation: hp-gain .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--d, 0) * 60ms); }
+@keyframes hp-gain { 0% { transform: scaleY(0); background: var(--verdant-200); } 60% { transform: scaleY(1.3); background: var(--verdant-300); } 100% { transform: scaleY(1); } }
+.fx-heal .gr-hp__cells { animation: hp-bloom 1.1s ease-out both; }
+@keyframes hp-bloom { 0% { box-shadow: 0 0 0 0 var(--verdant-300), var(--shadow-sm); } 35% { box-shadow: 0 0 0 6px var(--verdant-300), var(--shadow-sm); } 100% { box-shadow: 0 0 0 10px transparent, var(--shadow-sm); } }
+.num-heal { animation: num-heal .6s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes num-heal { 0% { transform: translateY(6px); color: var(--verdant-500); } 60% { transform: translateY(-3px); color: var(--verdant-500); } 100% { transform: none; color: inherit; } }
+.float-heal { background: var(--verdant-200); color: var(--verdant-900); border-color: var(--verdant-300); animation: float-heal 1.3s ease-out both; }
+@keyframes float-heal { 0% { opacity: 0; transform: translateY(16px); } 20% { opacity: 1; } 75% { opacity: 1; transform: translateY(-6px); } 100% { opacity: 0; transform: translateY(-16px); } }
+.gr-hp__cells span.ward { animation: hp-ward .5s steps(3) both; animation-delay: calc(var(--d, 0) * 80ms); }
+@keyframes hp-ward { 0% { opacity: 0; transform: translateX(12px); } 100% { opacity: 1; transform: none; } }
+.fx-temp .gr-hp__cells { animation: hp-ward-frame .8s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes hp-ward-frame { 0% { outline: 2px solid var(--accent); outline-offset: 12px; } 60% { outline: 2px solid var(--accent); outline-offset: 3px; } 100% { outline: 2px solid transparent; outline-offset: 3px; } }
+.fx-temp .gr-hp__cells span.tmp { animation: stripe-run 1s linear both; }
+@keyframes stripe-run { from { background-position: 0 0; } to { background-position: 16px 0; } }
+.float-temp { background: var(--accent-100); color: var(--accent-800); border-color: var(--accent); animation: float-temp 1.3s steps(1) both; }
+@keyframes float-temp { 0% { opacity: 0; transform: translateX(10px); } 10% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .fx-dmg .gr-hp__cells, .fx-heal .gr-hp__cells, .fx-temp .gr-hp__cells, .gr-hp__cells span.lost, .gr-hp__cells span.gain, .gr-hp__cells span.ward, .fx-temp .gr-hp__cells span.tmp, .win-dmg, .num-dmg, .num-heal,
+  .float-dmg, .float-heal, .float-temp { animation: none; }
+}

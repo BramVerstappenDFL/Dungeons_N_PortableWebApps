@@ -1,45 +1,51 @@
-import { NavLink, Route, Routes, Link, useParams } from 'react-router-dom';
-import { CharacterList } from './pages/CharacterList';
-import { CharacterEditor } from './pages/CharacterEditor';
-import { CharacterSheet } from './pages/CharacterSheet';
-import { About } from './pages/About';
-import { RollToast } from './components/RollToast';
-import { QuickRoll } from './components/QuickRoll';
-import { InstallButton, UpdatePrompt } from './components/PwaControls';
+import { useEffect } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { useActive } from './store/characters';
+import { useTheme } from './ui/theme';
+import { UpdatePrompt } from './ui/UpdatePrompt';
+import { SheetScreen } from './screens/SheetScreen';
+import { CreateScreen } from './screens/CreateScreen';
+import { DamageScreen } from './screens/DamageScreen';
+import { RestScreen } from './screens/RestScreen';
+import { CombatScreen } from './screens/CombatScreen';
+import { DiceScreen } from './screens/DiceScreen';
+import { PackScreen } from './screens/PackScreen';
+import { NotesScreen } from './screens/NotesScreen';
+import { SpellBookScreen } from './screens/SpellBookScreen';
+import { AboutScreen } from './screens/AboutScreen';
+
+const THEME_COLOR = { parchment: '#f8f0da', dungeon: '#1a1410' };
 
 export default function App() {
+  const theme = useTheme();
+  const active = useActive();
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
+  }, [theme]);
+
   return (
-    <div className="app">
-      <header className="topbar">
-        <Link to="/" className="brand">
-          <img src={`${import.meta.env.BASE_URL}icons/favicon.svg`} alt="" width={28} height={28} />
-          <span>D&amp;D Assist</span>
-        </Link>
-        <nav className="topnav">
-          <NavLink to="/" end>Characters</NavLink>
-          <NavLink to="/about">About</NavLink>
-        </nav>
-        <InstallButton />
-      </header>
-      <main>
-        <Routes>
-          <Route path="/" element={<CharacterList />} />
-          <Route path="/new" element={<CharacterEditor key="new" />} />
-          <Route path="/c/:id" element={<CharacterSheet />} />
-          <Route path="/c/:id/edit" element={<EditRoute />} />
-          <Route path="/about" element={<About />} />
-          <Route path="*" element={<CharacterList />} />
-        </Routes>
-      </main>
-      <QuickRoll />
-      <RollToast />
+    <div className="app" data-theme={theme}>
+      <Routes>
+        <Route path="/new" element={<CreateScreen />} />
+        <Route path="/about" element={<AboutScreen />} />
+        {active ? (
+          <>
+            <Route path="/" element={<SheetScreen key={active.id} c={active} />} />
+            <Route path="/damage" element={<DamageScreen c={active} />} />
+            <Route path="/rest" element={<RestScreen key={active.id} c={active} />} />
+            <Route path="/combat" element={<CombatScreen key={active.id} c={active} />} />
+            <Route path="/dice" element={<DiceScreen key={active.id} c={active} />} />
+            <Route path="/pack" element={<PackScreen key={active.id} c={active} />} />
+            <Route path="/notes" element={<NotesScreen key={active.id} c={active} />} />
+            <Route path="/spells" element={<SpellBookScreen c={active} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </>
+        ) : (
+          <Route path="*" element={<Navigate to="/new" replace />} />
+        )}
+      </Routes>
       <UpdatePrompt />
     </div>
   );
-}
-
-// Remount the editor per character so form state never leaks between characters.
-function EditRoute() {
-  const { id } = useParams();
-  return <CharacterEditor key={id} />;
 }

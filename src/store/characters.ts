@@ -1,47 +1,76 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Character, RollLogEntry } from '../types';
-import { roll as rollDice, type RollMode } from '../rules/dice';
+import type { Character, Item, Note, RollLogEntry } from '../types';
+import { roll as rollDice, type RollMode, type RollResult } from '../rules/dice';
+import { XP_TABLE } from '../rules/xp';
+import { newCombat } from '../rules/combat';
 
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
 const MAX_LOG = 100;
 
 export interface LastRoll extends RollLogEntry { characterName?: string }
+export interface RollOutcome extends LastRoll { result: RollResult }
+
+export type Theme = 'parchment' | 'dungeon';
 
 interface State {
   characters: Character[];
+  activeId: string | null;
+  /** null = follow the system colour scheme. */
+  theme: Theme | null;
   lastRoll: LastRoll | null;
   add: (c: Character) => void;
   update: (id: string, fn: (c: Character) => Character) => void;
   remove: (id: string) => void;
-  duplicate: (id: string) => string | null;
+  select: (id: string) => void;
+  setTheme: (t: Theme | null) => void;
   importMany: (list: Character[]) => number;
-  /** Rolls an expression, logs it on the character (if any) and shows it in the roll toast. */
-  roll: (expression: string, label: string, opts?: { characterId?: string; mode?: RollMode }) => LastRoll | null;
-  clearLastRoll: () => void;
+  /** Rolls an expression and logs it on the character (if any). */
+  roll: (expression: string, label: string, opts?: { characterId?: string; mode?: RollMode }) => RollOutcome | null;
+}
+
+/** Brings a character saved by an older version up to the current shape. */
+export function migrateCharacter(raw: unknown): Character {
+  const c = raw as Omit<Character, 'notes'> & { notes?: unknown };
+  const oldNotes = c.notes;
+  const notes: Note[] = Array.isArray(oldNotes)
+    ? (oldNotes as Note[])
+    : typeof oldNotes === 'string' && oldNotes.trim()
+      ? [{ id: uid(), tag: 'Session', title: 'Notes', body: oldNotes.trim(), pinned: false, createdAt: c.updatedAt ?? Date.now() }]
+      : [];
+  const inventory: Item[] = (c.inventory ?? []).map((i) => ({ ...i, kind: i.kind ?? 'gear' }));
+  return {
+    ...c,
+    xp: typeof c.xp === 'number' ? c.xp : XP_TABLE[Math.max(1, Math.min(20, c.level ?? 1))],
+    inspiration: c.inspiration ?? false,
+    notes,
+    inventory,
+    combat: c.combat ?? newCombat(),
+  };
 }
 
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
       characters: [],
+      activeId: null,
+      theme: null,
       lastRoll: null,
-      add: (c) => set((s) => ({ characters: [...s.characters, c] })),
+      add: (c) => set((s) => ({ characters: [...s.characters, c], activeId: c.id })),
       update: (id, fn) =>
         set((s) => ({ characters: s.characters.map((c) => (c.id === id ? { ...fn(c), updatedAt: Date.now() } : c)) })),
-      remove: (id) => set((s) => ({ characters: s.characters.filter((c) => c.id !== id) })),
-      duplicate: (id) => {
-        const src = get().characters.find((c) => c.id === id);
-        if (!src) return null;
-        const copy: Character = { ...structuredClone(src), id: uid(), name: `${src.name} (copy)`, createdAt: Date.now(), updatedAt: Date.now() };
-        set((s) => ({ characters: [...s.characters, copy] }));
-        return copy.id;
-      },
+      remove: (id) =>
+        set((s) => {
+          const characters = s.characters.filter((c) => c.id !== id);
+          return { characters, activeId: s.activeId === id ? (characters[0]?.id ?? null) : s.activeId };
+        }),
+      select: (id) => set({ activeId: id }),
+      setTheme: (theme) => set({ theme }),
       importMany: (list) => {
-        const valid = list.filter((c) => c && typeof c.name === 'string' && c.abilities && c.hp);
+        const valid = list.filter((c) => c && typeof c.name === 'string' && c.abilities && c.hp).map(migrateCharacter);
         const existing = new Set(get().characters.map((c) => c.id));
         const fixed = valid.map((c) => (existing.has(c.id) ? { ...c, id: uid() } : c));
-        set((s) => ({ characters: [...s.characters, ...fixed] }));
+        set((s) => ({ characters: [...s.characters, ...fixed], activeId: s.activeId ?? fixed[0]?.id ?? null }));
         return fixed.length;
       },
       roll: (expression, label, opts = {}) => {
@@ -54,7 +83,7 @@ export const useStore = create<State>()(
         const isD20 = r.natural != null;
         const entry: LastRoll = {
           id: uid(),
-          label: opts.mode && opts.mode !== 'normal' ? `${label} (${opts.mode === 'advantage' ? 'adv' : 'dis'})` : label,
+          label: opts.mode && opts.mode !== 'normal' ? `${label} (${opts.mode === 'advantage' ? 'advantage' : 'disadvantage'})` : label,
           expression: r.expression,
           total: r.total,
           detail: r.detail,
@@ -68,16 +97,26 @@ export const useStore = create<State>()(
           get().update(characterId, (c) => ({ ...c, rollLog: [entry, ...c.rollLog].slice(0, MAX_LOG) }));
         }
         set({ lastRoll: entry });
-        return entry;
+        return { ...entry, result: r };
       },
-      clearLastRoll: () => set({ lastRoll: null }),
     }),
     {
       name: 'dnd-assist',
-      version: 1,
-      partialize: (s) => ({ characters: s.characters }),
+      version: 2,
+      partialize: (s) => ({ characters: s.characters, activeId: s.activeId, theme: s.theme }),
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as { characters?: unknown[]; activeId?: string | null; theme?: Theme | null };
+        const characters = (p.characters ?? []).map(migrateCharacter);
+        return {
+          characters,
+          activeId: version < 2 ? (characters[0]?.id ?? null) : (p.activeId ?? characters[0]?.id ?? null),
+          theme: p.theme ?? null,
+        } as Partial<State> as State;
+      },
     },
   ),
 );
 
-export const useCharacter = (id: string | undefined) => useStore((s) => s.characters.find((c) => c.id === id));
+/** The character being played, or undefined when there are none. */
+export const useActive = () =>
+  useStore((s) => s.characters.find((c) => c.id === s.activeId) ?? s.characters[0]);
