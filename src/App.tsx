@@ -14,7 +14,8 @@ import { NotesScreen } from './screens/NotesScreen';
 import { SpellBookScreen } from './screens/SpellBookScreen';
 import { AboutScreen } from './screens/AboutScreen';
 
-const THEME_COLOR = { parchment: '#f8f0da', dungeon: '#1a1410' };
+// Browser and status-bar colour: the `paper` token of each theme, matching the header.
+const THEME_COLOR = { parchment: '#f8f0da', dungeon: '#231b14' };
 
 export default function App() {
   const theme = useTheme();

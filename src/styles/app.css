@@ -3,7 +3,16 @@
   --font-heading: "Texturina", Georgia, "Times New Roman", serif;
   --font-initial: "Uncial Antiqua", "Texturina", serif;
 }
-html, body { margin: 0; height: 100%; background: var(--desk); color: var(--ink); }
+/* Native controls, autofill and pickers follow the theme: Dungeon is a dark scheme. */
+:root, [data-theme="parchment"] { color-scheme: light; }
+[data-theme="dungeon"] { color-scheme: dark; }
+/* The desk always carries the 32px battle-mat grid; on wide screens it shows beside the phone column. */
+html, body {
+  margin: 0; height: 100%; color: var(--ink);
+  background-color: var(--desk);
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-pitch, 32px) var(--grid-pitch, 32px);
+}
 body { font-family: var(--font-body); -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
 #root { height: 100%; }
 /* No visible scrollbars; content still scrolls. */
