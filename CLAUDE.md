@@ -1,6 +1,8 @@
 # D&D Assist: notes for Claude
 
 ## Workflow
+- `main` is the default branch. Never commit to it directly: start every change on a new sub-branch cut from the latest `origin/main`.
+- Give branches **descriptive names** that say what the change does, with a type prefix, e.g. `feat/spell-slot-tracker`, `fix/hp-temp-overflow`, `docs/readme-install-steps`. Avoid auto-generated names like `claude/loving-wozniak-xyz`; if the session assigns one, create a descriptive branch instead.
 - **Always open a pull request against `main`** after pushing work in a cloud session. Do not wait to be asked.
 - `main` is the deploy branch. Every push to it publishes to GitHub Pages (`.github/workflows/deploy.yml`).
 
