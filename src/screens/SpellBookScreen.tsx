@@ -4,6 +4,7 @@ import type { Character } from '../types';
 import { useStore } from '../store/characters';
 import { derive } from '../rules/derived';
 import { allSpells, castingFor } from '../rules/origin';
+import { preparedSpells } from '../rules/classes';
 import { maxSpellLevel } from '../rules/slots';
 import { Icon } from '../ui/Icon';
 import { useSpells } from '../ui/useSpells';
@@ -51,7 +52,7 @@ export function SpellBookScreen({ c }: { c: Character }) {
           <Link to="/" className="gr-btn gr-btn--secondary gr-btn--icon ico-btn" aria-label="Back to sheet"><Icon name="back" /></Link>
           <div className="col" style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <h1 className="sub" style={{ margin: 0, font: '600 22px/1.15 var(--font-heading)' }}>Spellbook</h1>
-            <span className="muted">{mineAll.length} known · {prepared} prepared · up to {ordinal(top)} level</span>
+            <span className="muted">{mineAll.length} known · {prepared}{preparedSpells(c.classId, c.level) ? ` of ${preparedSpells(c.classId, c.level) + mineAll.filter((s) => s.source).length}` : ''} prepared · up to {ordinal(top)} level</span>
           </div>
         </div>
         <div className="gr-search">

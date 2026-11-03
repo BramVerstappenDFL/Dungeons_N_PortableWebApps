@@ -10,7 +10,7 @@ import subclassesJson from './subclasses.json';
 import featsJson from './feats.json';
 import languagesJson from './languages.json';
 import armorJson from './armor.json';
-import { PHB_BACKGROUNDS, PHB_FEATS, PHB_SPECIES, PHB_SUBCLASSES } from './phb';
+import { PHB_BACKGROUNDS, PHB_FEATS, PHB_FIGHTING_STYLES, PHB_GENERAL_FEATS, PHB_SPECIES, PHB_SUBCLASSES } from './phb';
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
 const srd = <T>(list: T[]) => list.map((x) => ({ source: 'SRD 5.2.1' as const, ...x }));
@@ -21,7 +21,7 @@ export const BACKGROUNDS = [...srd(backgroundsJson as BackgroundData[]), ...PHB_
 export const WEAPONS = weaponsJson as WeaponData[];
 export const LINEAGES = srd(lineagesJson as LineageData[]);
 export const SUBCLASSES = [...srd(subclassesJson as SubclassData[]), ...PHB_SUBCLASSES].sort(byName);
-export const FEATS = [...srd(featsJson as FeatData[]), ...PHB_FEATS].sort(byName);
+export const FEATS = [...srd(featsJson as FeatData[]), ...PHB_FEATS, ...PHB_GENERAL_FEATS, ...PHB_FIGHTING_STYLES].sort(byName);
 export const LANGUAGES = languagesJson as LanguageData[];
 export const ARMOR = armorJson as (ArmorInfo & { id: string; name: string; weight: number })[];
 export const armorByName = (name: string) => ARMOR.find((a) => a.name.toLowerCase() === name.trim().toLowerCase());

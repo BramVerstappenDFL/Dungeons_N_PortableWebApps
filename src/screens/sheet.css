@@ -51,3 +51,7 @@
 .pip.spent { background: var(--neutral-300); box-shadow: none; transform: rotate(45deg) scale(.7) translate(1px, 1px); }
 .pip:active { transform: rotate(45deg) scale(.6); }
 @media (prefers-reduced-motion: reduce) { .feat__text, .pip, .feat details > summary::before { animation: none; transition: none; } }
+.lvl-ready { flex: none; text-decoration: none; animation: lvl-glow 2.4s cubic-bezier(.2,.8,.2,1) infinite; }
+.lvl-ready.lvl-pop { animation: lvl-pop .5s cubic-bezier(.2,.8,.2,1) both, lvl-glow 2.4s cubic-bezier(.2,.8,.2,1) .5s infinite; }
+@keyframes lvl-glow { 0%, 70%, 100% { box-shadow: var(--shadow-gilt); } 35% { box-shadow: 5px 5px 0 var(--gilt); } }
+@media (prefers-reduced-motion: reduce) { .lvl-ready, .lvl-ready.lvl-pop { animation: none; } }

@@ -12,6 +12,7 @@ import { DiceScreen } from './screens/DiceScreen';
 import { PackScreen } from './screens/PackScreen';
 import { NotesScreen } from './screens/NotesScreen';
 import { SpellBookScreen } from './screens/SpellBookScreen';
+import { LevelUpRoute } from './screens/LevelUpScreen';
 import { AboutScreen } from './screens/AboutScreen';
 
 const THEME_COLOR = { parchment: '#f8f0da', dungeon: '#1a1410' };
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/pack" element={<PackScreen key={active.id} c={active} />} />
             <Route path="/notes" element={<NotesScreen key={active.id} c={active} />} />
             <Route path="/spells" element={<SpellBookScreen c={active} />} />
+            <Route path="/level-up" element={<LevelUpRoute c={active} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </>
         ) : (

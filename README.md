@@ -6,6 +6,14 @@ An installable Progressive Web App for Dungeons & Dragons 5th edition (2024 rule
 A phone-first app (on wider screens it shows as a centered phone column), built on the **Grimoire** design system with Parchment and Dungeon themes.
 - **Sheet**: HP, AC, initiative, speed, proficiency, abilities and save proficiencies, spell slots (tap to spend or restore), Hit Dice and short rest, inspiration and concentration. An accordion of equipped weapons and ready spells with generated banners. Add experience and watch it fly into the XP bar; levelling up grows HP by the class average.
 - **New character**: six animated steps: name, species (10, with lineages and size) and traits; background (16, with origin feat and tool); class (12) with skills and a level-3 path (48 subclasses); standard array or point buy with the 2024 background increases; starting equipment kits and languages; and a review that seals the character. Starting AC comes from the kit's armour. All motion is off under reduced motion.
+- **Levelling**: XP marks a level-up as ready (a gilt button on the sheet), or the DM awards a milestone level from the XP sheet. Each level goes through a short animated flow:
+  - hit points: the average, or roll the hit die;
+  - the class and subclass features gained, and the class resources that grow (Rage, Second Wind, Channel Divinity, Focus, Sorcery Points…);
+  - subclass at level 3 (48 to choose from);
+  - Ability Score Improvement or a feat at the class's levels (Fighter 6 and 14, Rogue 10), and an Epic Boon at 19;
+  - Fighting Style for Fighters, Paladins and Rangers;
+  - new cantrips.
+  The last level can be undone. Class features have use pips on the sheet, limited ones appear in combat (Second Wind heals), and rests restore them: a short rest gives back one use of Rage, Channel Divinity, Wild Shape and Second Wind.
 - **Origins in play**: species, lineage and origin-feat effects carry through the app. Darkvision, size and passive Perception show on the sheet. Resisted damage is halved on the damage screen. Dwarven Toughness and Tough add HP per level. Alert adds to initiative. Wood Elves move 35 ft. Lineage and Magic Initiate spells are always prepared and cast with their own ability, with one free cast per long rest. Limited features (Breath Weapon, Adrenaline Rush, Lucky…) have use pips on the sheet and cards in combat, and come back on the right rest. Humans gain Heroic Inspiration after a long rest. AC follows equipped armour unless you set it by hand.
 - **Damage and healing**: keypad for damage, healing and temp HP (temp HP absorbs first), concentration DC and 0 HP warnings, death saves on the sheet.
 - **Long rest**: shows what comes back, plays the night and dawn animation, then restores HP, slots and Hit Dice, lowers Exhaustion, and offers Undo.

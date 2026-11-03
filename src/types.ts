@@ -13,7 +13,10 @@ export interface ClassData {
   casterType: CasterType;
   primary?: Ability[];
   kits?: StartingKit[];
+  features?: ClassFeature[];
+  asiLevels?: number[];
 }
+export interface ClassFeature { id: string; name: string; level: number; description: string }
 /** Where an entry comes from. PHB 2024 entries carry names and mechanics only, never rules text. */
 export type Source = 'SRD 5.2.1' | 'PHB 2024';
 export interface KitItem { name: string; qty: number; weight: number; weaponId?: string; armor?: ArmorInfo }
@@ -40,7 +43,10 @@ export interface BackgroundData {
 export interface LineageData extends Mechanics { id: string; name: string; speciesId: string; damageType?: string; description: string; source?: Source }
 export interface SubclassFeature { id: string; name: string; level: number; description: string }
 export interface SubclassData { id: string; name: string; classId: string; description: string; features?: SubclassFeature[]; source?: Source }
-export interface FeatData { id: string; name: string; category: string; description: string; source?: Source }
+export interface FeatData {
+  id: string; name: string; category: string; description: string; source?: Source;
+  prerequisiteLevel?: number; abilities?: Ability[]; repeatable?: boolean;
+}
 export interface LanguageData { id: string; name: string; rare: boolean }
 export interface Spell {
   id: string;
@@ -141,6 +147,14 @@ export interface CreationInfo {
   acAuto?: boolean; // AC follows equipped armour
 }
 
+export interface TakenFeat { id: string; level: number; ability?: Ability; note?: string }
+/** One level gained, with what it changed, so it can be undone. */
+export interface LevelRecord {
+  level: number; // the level reached
+  hp: number; // max HP gained
+  rolled?: number; // the hit die roll, if rolled
+  before: Pick<Character, 'abilities' | 'subclassId' | 'skills' | 'expertise' | 'spells' | 'feats' | 'saveProficiencies' | 'speedOverride'>;
+}
 export interface Character {
   id: string;
   name: string;
@@ -181,6 +195,9 @@ export interface Character {
   extraFeatNote?: string;
   originPicks?: { keenSenses?: string; skillful?: string; skilled?: string[] };
   featureUses?: Record<string, number>; // uses spent, by feature id
+  feats?: TakenFeat[]; // feats from level-ups (ASI, Fighting Style, Epic Boon)
+  saveProficiencies?: Ability[]; // extra saves (Resilient)
+  levelHistory?: LevelRecord[];
   createdAt: number;
   updatedAt: number;
 }

@@ -27,7 +27,7 @@ function restRows(before: Character, after: Character): Row[] {
   rows.push({ label: 'Exhaustion', note: 'Drops by one level', from: `${before.exhaustion}`, to: `${after.exhaustion}` });
   if (before.hp.temp > 0) rows.push({ label: 'Temporary HP', note: 'They fade', from: `${before.hp.temp}`, to: '0' });
   if (before.concentration) rows.push({ label: 'Concentration', note: 'Ends when you sleep', from: 'On', to: 'Off' });
-  for (const f of d.origin.features) {
+  for (const f of d.features) {
     const used = before.featureUses?.[f.id] ?? 0;
     if (f.uses && used > 0) rows.push({ label: f.name, note: 'Uses come back', from: `${f.uses.max - used} / ${f.uses.max}`, to: `${f.uses.max} / ${f.uses.max}` });
   }

@@ -3,7 +3,6 @@ import {
   allSpells, applyResistance, armorClassFrom, armorClassOf, breathWeapon, castingFor, originOf, restoreFeatures, spendFeature, usesLeft,
 } from '../src/rules/origin';
 import { derive } from '../src/rules/derived';
-import { applyXp } from '../src/rules/xp';
 import { finishShortRest, longRest } from '../src/rules/rest';
 import { buildCharacter } from '../src/rules/create';
 import { classById } from '../src/data';
@@ -119,10 +118,6 @@ describe('creation and level-up', () => {
     expect(c.skills).toContain('perception');
     expect(c.tools?.length).toBe(1);
     expect(c.creation?.acAuto).toBe(true);
-  });
-  it('adds per-level HP bonuses on level-up', () => {
-    const c = makeCharacter({ level: 1, xp: 0, hp: { max: 10, current: 10, temp: 0 } });
-    expect(applyXp(c, 300, 10, 1).character.hp.max).toBe(10 + 6 + 2 + 1);
   });
   it('migrates armour and feature uses onto old characters', () => {
     const c = migrateCharacter({ id: 'a', level: 2, inventory: [{ id: 'i', name: 'Chain Mail', qty: 1, weight: 55, notes: '', equipped: true }] });

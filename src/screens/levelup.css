@@ -1,0 +1,12 @@
+/* Level-up flow: shares the creation flow's Grimoire motion (create.css); these are its own pieces. */
+.lvl-badge { position: relative; flex: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; animation: cr-stamp-seal .5s cubic-bezier(.2,.8,.2,1) both; }
+.lvl-badge::before { content: ''; position: absolute; inset: 7px; background: var(--gilt); border: 2px solid var(--ink); box-shadow: var(--shadow-sm); transform: rotate(45deg); }
+.lvl-badge .num { position: relative; font-size: 20px; color: var(--on-gilt); }
+.kit:disabled { cursor: default; }
+.kit:disabled:not(.is-on) { opacity: .55; }
+.abpick { width: 100%; box-sizing: border-box; font: inherit; color: var(--ink); background: var(--paper); border: 0; border-top: 2px solid var(--ink); cursor: pointer; text-align: left; min-height: 52px; transition: background .18s; }
+.abpick:first-child { border-top: 0; }
+.abpick:hover:not(:disabled) { background: var(--accent-100); }
+.abpick.is-on { background: var(--gilt-100); }
+.abpick:disabled { cursor: default; opacity: .55; }
+.gr-chip.boon { border-color: var(--ink); box-shadow: 2px 2px 0 var(--gilt); }

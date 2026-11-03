@@ -3,16 +3,8 @@ import type { Ability, AbilityScores, ArmorInfo, Character, CharacterSpell, Econ
 import { backgroundById, featById, lineageById, speciesById, subclassById } from '../data';
 import { abilityMod, proficiencyBonus } from './abilities';
 
-export type FeatureSource = 'Species' | 'Lineage' | 'Feat' | 'Path';
-export type Recharge = 'short' | 'long';
-export interface FeatureDef {
-  id: string;
-  name: string;
-  source: FeatureSource;
-  text: string; // SRD text; empty for PHB entries (name only)
-  uses?: { max: number; recharge: Recharge };
-  slot?: EconomySlot; // how it is used in combat, if it takes an action
-}
+import { classFeatures, type FeatureDef, type Recharge } from './classes';
+export type { FeatureDef, Recharge } from './classes';
 
 /** Limited uses and action costs, keyed by SRD/PHB trait or feat id. `pb` = Proficiency Bonus uses. */
 const USES: Record<string, { max: 'pb' | number; recharge: Recharge; minLevel?: number; slot?: EconomySlot }> = {
@@ -72,8 +64,9 @@ export function originOf(c: Character): Origin {
   }
   if (lineage?.damageType) resistances.add(lineage.damageType); // Dragonborn Damage Resistance
 
-  const featIds = [c.originFeat, c.extraFeat].filter((f): f is string => !!f);
-  const feats = featIds.map((id, i) => ({ id, name: featById(id)?.name ?? id, note: i === 0 ? c.originFeatNote : c.extraFeatNote }));
+  const featIds = [c.originFeat, c.extraFeat, ...(c.feats ?? []).map((f) => f.id)].filter((f): f is string => !!f);
+  const notes = [c.originFeatNote, c.extraFeatNote, ...(c.feats ?? []).map((f) => f.note)];
+  const feats = featIds.map((id, i) => ({ id, name: featById(id)?.name ?? id, note: notes[i] }));
   for (const f of featIds) hpPerLevel += FEAT_HP_PER_LEVEL[f] ?? 0;
 
   const features: FeatureDef[] = [];
@@ -83,8 +76,8 @@ export function originOf(c: Character): Origin {
   };
   for (const t of traits) features.push({ id: t.id, name: t.name, source: 'Species', text: t.description, ...use(t.id) });
   if (lineage) features.push({ id: `lineage-${lineage.id}`, name: lineage.name, source: 'Lineage', text: lineage.description });
-  feats.forEach((f) => features.push({
-    id: f.id, name: f.note ? `${f.name} (${f.note})` : f.name, source: 'Feat',
+  feats.forEach((f, i) => features.push({
+    id: featIds.indexOf(f.id) === i ? f.id : `${f.id}-${i}`, name: f.note ? `${f.name} (${f.note})` : f.name, source: 'Feat',
     text: (featById(f.id)?.description ?? '').replace(/^Origin Feat\s*/, ''), ...use(f.id),
   }));
   const sub = subclassById(c.subclassId);
@@ -102,7 +95,7 @@ export function originOf(c: Character): Origin {
   const bg = backgroundById(c.backgroundId);
   return {
     size: c.size ?? ((species?.size as Size) || 'medium'),
-    speed: (species?.speed ?? 30) + (lineage?.speedBonus ?? 0),
+    speed: (species?.speed ?? 30) + (lineage?.speedBonus ?? 0) + (featIds.includes('speedy') ? 10 : 0),
     darkvision,
     resistances: [...resistances],
     hpPerLevel,
@@ -119,8 +112,12 @@ export function originOf(c: Character): Origin {
 /** Uses left of a limited feature. */
 export const usesLeft = (c: Character, f: FeatureDef) => Math.max(0, (f.uses?.max ?? 0) - (c.featureUses?.[f.id] ?? 0));
 
+/** Every feature the character has: species, lineage, feats, path and class. */
+export const featuresOf = (c: Character): FeatureDef[] => [...classFeatures(c), ...originOf(c).features];
+
 /** Spends (delta 1) or restores (delta -1) one use, within 0..max. */
 export function spendFeature(c: Character, f: FeatureDef, delta = 1): Character {
+  // delta can be more than 1 for pools (Lay on Hands, Focus, Sorcery Points).
   if (!f.uses) return c;
   const used = Math.max(0, Math.min(f.uses.max, (c.featureUses?.[f.id] ?? 0) + delta));
   return { ...c, featureUses: { ...c.featureUses, [f.id]: used } };
@@ -130,8 +127,15 @@ export function spendFeature(c: Character, f: FeatureDef, delta = 1): Character 
 export function restoreFeatures(c: Character, rest: Recharge): Character {
   if (!c.featureUses) return c;
   if (rest === 'long') return { ...c, featureUses: {} };
-  const shortIds = new Set(originOf(c).features.filter((f) => f.uses?.recharge === 'short').map((f) => f.id));
-  return { ...c, featureUses: Object.fromEntries(Object.entries(c.featureUses).filter(([id]) => !shortIds.has(id))) };
+  // Short rest: `short` features come back in full, `short-one` features regain one use.
+  const byId = new Map(featuresOf(c).map((f) => [f.id, f]));
+  const uses: Record<string, number> = {};
+  for (const [id, used] of Object.entries(c.featureUses)) {
+    const r = byId.get(id)?.uses?.recharge;
+    const left = r === 'short' ? 0 : r === 'short-one' ? used - 1 : used;
+    if (left > 0) uses[id] = left;
+  }
+  return { ...c, featureUses: uses };
 }
 
 /** Breath Weapon: 1d10 rising at levels 5, 11 and 17; Dex save DC 8 + CON + PB. */
@@ -179,5 +183,10 @@ export function armorClassFrom(classId: string, scores: AbilityScores, worn: { a
 }
 
 /** The character's AC: worked out from equipped armour while automatic, else the number set by hand. */
-export const armorClassOf = (c: Character) =>
-  c.creation?.acAuto ? armorClassFrom(c.classId, c.abilities, c.inventory.filter((i) => i.equipped)) : c.armorClass;
+export function armorClassOf(c: Character): number {
+  if (!c.creation?.acAuto) return c.armorClass;
+  const worn = c.inventory.filter((i) => i.equipped);
+  // Defense fighting style: +1 AC while wearing body armour.
+  const defense = c.feats?.some((f) => f.id === 'defense') && worn.some((i) => i.armor && i.armor.category !== 'shield') ? 1 : 0;
+  return armorClassFrom(c.classId, c.abilities, worn) + defense;
+}

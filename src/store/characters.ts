@@ -54,6 +54,8 @@ export function migrateCharacter(raw: unknown): Character {
     languages: Array.isArray(c.languages) ? c.languages : ['common'],
     tools: Array.isArray(c.tools) ? c.tools : [],
     featureUses: c.featureUses ?? {},
+    feats: Array.isArray(c.feats) ? c.feats : [],
+    levelHistory: Array.isArray(c.levelHistory) ? c.levelHistory : [],
   };
 }
 
@@ -110,7 +112,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'dnd-assist',
-      version: 4,
+      version: 5,
       partialize: (s) => ({ characters: s.characters, activeId: s.activeId, theme: s.theme }),
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as { characters?: unknown[]; activeId?: string | null; theme?: Theme | null };

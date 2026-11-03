@@ -7,6 +7,7 @@ import { endTurn, newCombat, pickSlot, setUsed, slotForCastingTime, spendSlot } 
 import { weaponAttack } from '../rules/weapons';
 import { spellRolls } from '../rules/spells';
 import { d20With } from '../rules/dice';
+import { applyHealing } from '../rules/hp';
 import { allSpells, breathWeapon, castingFor, freeCastKey, hasFreeCast, spendFeature, usesLeft, type FeatureDef } from '../rules/origin';
 import { Icon } from '../ui/Icon';
 import { TabBar } from '../ui/TabBar';
@@ -126,7 +127,8 @@ export function CombatScreen({ c }: { c: Character }) {
       facts: opportunity
         ? [['Trigger', 'Foe leaves reach'], ['To hit', signed(a.toHit)], ['Damage', `${prettyExpr(a.damage)} ${w.damageType}`], ['Reach', a.rangeText]]
         : [['To hit', signed(a.toHit)], ['Damage', `${prettyExpr(a.damage)} ${w.damageType}`], ['Range', a.rangeText], [a.versatile ? 'Two hands' : 'Weight', a.versatile ? prettyExpr(a.versatile) : `${w.weight} lb`]],
-      text: opportunity ? 'Opportunity attack: strike a creature as it moves out of your reach.' : w.properties.length ? `Properties: ${w.properties.join(', ')}.` : undefined,
+      text: opportunity ? 'Opportunity attack: strike a creature as it moves out of your reach.'
+        : [d.attacks > 1 ? `Extra Attack: ${d.attacks} attacks per Attack action.` : '', d.sneakAttack && (w.properties.includes('finesse') || w.range === 'ranged') ? `Sneak Attack: +${d.sneakAttack} once per turn with advantage or an ally nearby.` : '', w.properties.length ? `Properties: ${w.properties.join(', ')}.` : ''].filter(Boolean).join(' ') || undefined,
       go: () => attack(i.name, a.toHit, a.damage, w.damageType, slot),
     };
   };
@@ -136,7 +138,7 @@ export function CombatScreen({ c }: { c: Character }) {
   // ---- Species and feat features that take an action ----
   const useFeature = (f: FeatureDef, slot: EconomySlot, after?: () => void) => {
     if (!usesLeft(c, f)) {
-      overlay.show({ kicker: f.name, total: '0', title: 'No uses left', calc: `It comes back after a ${f.uses?.recharge === 'short' ? 'short or long' : 'long'} rest.` }, []);
+      overlay.show({ kicker: f.name, total: '0', title: 'No uses left', calc: f.uses?.recharge === 'long' ? 'It comes back after a long rest.' : 'It comes back after a short or long rest.' }, []);
       return;
     }
     set((x) => spendFeature(x, f));
@@ -158,15 +160,30 @@ export function CombatScreen({ c }: { c: Character }) {
         }),
       };
     }
+    if (f.id === 'class-second-wind') {
+      const expr = `1d10+${c.level}`;
+      return {
+        key: `${slot}-${f.id}`, name: f.name, level: 1, kind: f.source, verb: 'Catch your breath',
+        short: `Heal ${prettyExpr(expr)} · ${left} left`,
+        facts: [['Healing', prettyExpr(expr)], ['Uses', `${left} of ${f.uses!.max}`], ['Back after', 'One per short rest']],
+        text: excerpt(f.text, 180),
+        go: () => useFeature(f, slot, () => {
+          const r = roll(expr, 'Second Wind', opts);
+          if (!r) return;
+          set((x) => applyHealing(x, r.total));
+          show({ kicker: 'Hit points regained', total: r.total, title: 'Second Wind', calc: `${calcText(r.result)} = ${r.total} · now ${Math.min(c.hp.max, c.hp.current + r.total)} of ${c.hp.max} · ${left - 1} left` }, facesOf(r.result), slot);
+        }),
+      };
+    }
     return {
       key: `${slot}-${f.id}`, name: f.name, level: 1, kind: f.source, verb: 'Use',
       short: `${left} of ${f.uses!.max} left`,
-      facts: [['Uses', `${left} of ${f.uses!.max}`], ['Back after', f.uses!.recharge === 'short' ? 'Short rest' : 'Long rest']],
+      facts: [['Uses', `${left} of ${f.uses!.max}`], ['Back after', f.uses!.recharge === 'short' ? 'Short rest' : f.uses!.recharge === 'short-one' ? 'One per short rest' : 'Long rest']],
       text: f.text ? excerpt(f.text, 180) : 'See the Player’s Handbook for the rules.',
       go: () => useFeature(f, slot),
     };
   };
-  const featuresFor = (slot: EconomySlot) => d.origin.features.filter((f) => f.slot === slot && f.uses).map((f) => featureAction(f, slot));
+  const featuresFor = (slot: EconomySlot) => d.features.filter((f) => f.slot === slot && f.uses && !f.pool).map((f) => featureAction(f, slot));
   const melee = weapons.find((i) => weaponById(i.weaponId)!.range === 'melee');
   const all: Record<EconomySlot, Action[]> = {
     action: [...bySlot('action'), ...weapons.map((i) => weaponAction(i, 'action')), ...featuresFor('action')],

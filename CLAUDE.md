@@ -11,7 +11,8 @@
 - Game logic lives in pure functions in `src/rules/` (dice, abilities, slots, HP, rests, spell rolls, XP, weapons, combat, creation), with Vitest tests in `tests/`. Keep new rules there, with tests.
 - SRD 5.2.1 data (CC-BY-4.0) is generated into `src/data/*.json` by `npm run build:srd`. Do not edit the JSON by hand. Keep the attribution in About, the README and `LICENSE-SRD`.
 - Species, lineage, origin-feat and path effects live in one place, `src/rules/origin.ts` (`originOf`, feature uses, granted spells, resistance, AC from armour). Screens read them through `derive(c).origin`; add new trait or feat effects there, with tests in `tests/origin.test.ts`.
-- `src/data/phb.ts` holds PHB 2024 backgrounds, Aasimar, subclasses and origin feats as **names and mechanics only** (`description: ''`, a test enforces it). Never add rules or flavour text from the book.
+- Class progression lives in `src/rules/classes.ts` (spell counts, scaling class resources, `classFeatures`) and `src/rules/progression.ts` (`levelUpPlan`, `applyLevelUp`, `undoLastLevel`, `pendingLevels`); the flow is `src/screens/LevelUpScreen.tsx`. All features (origin + class) come from `featuresOf(c)` / `derive(c).features`. XP never raises the level by itself.
+- `src/data/phb.ts` holds PHB 2024 backgrounds, Aasimar, subclasses, origin and general feats and fighting styles as **names and mechanics only** (`description: ''`, a test enforces it). Never add rules or flavour text from the book.
 
 ## Commands
 - `npm test`: unit tests

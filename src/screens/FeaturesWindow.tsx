@@ -3,9 +3,12 @@ import type { Character } from '../types';
 import { useStore } from '../store/characters';
 import { spendFeature, usesLeft, type FeatureDef } from '../rules/origin';
 import { excerpt } from '../ui/format';
+import { Icon } from '../ui/Icon';
+
+const recharge = (r: string) => (r === 'short' ? 'short or long rest' : r === 'short-one' ? 'one back per short rest' : 'long rest');
 
 const TINCTURE: Record<FeatureDef['source'], string> = {
-  Species: 'var(--tincture-5)', Lineage: 'var(--tincture-4)', Feat: 'var(--tincture-3)', Path: 'var(--tincture-1)',
+  Class: 'var(--tincture-2)', Species: 'var(--tincture-5)', Lineage: 'var(--tincture-4)', Feat: 'var(--tincture-3)', Path: 'var(--tincture-1)',
 };
 
 /** Species traits, lineage, origin feats and path features, with tappable use pips for limited ones. */
@@ -27,7 +30,17 @@ export function FeaturesWindow({ c, features }: { c: Character; features: Featur
                 </summary>
                 <p className="feat__text">{f.text ? excerpt(f.text, 420) : 'Listed by name; see the Player’s Handbook for the rules.'}</p>
               </details>
-              {f.uses && (
+              {f.uses && f.pool && (
+                <div className="feat__uses">
+                  <div className="gr-stepper" style={{ height: 36 }}>
+                    <button onClick={() => update(c.id, (x) => spendFeature(x, f, 1))} disabled={left === 0} aria-label={`Spend 1 from ${f.name}`}><Icon name="minus" /></button>
+                    <output key={left} className="tick">{left}</output>
+                    <button onClick={() => update(c.id, (x) => spendFeature(x, f, -1))} disabled={left === f.uses.max} aria-label={`Restore 1 to ${f.name}`}><Icon name="plus" /></button>
+                  </div>
+                  <span className="muted">of {f.uses.max} · {recharge(f.uses.recharge)}</span>
+                </div>
+              )}
+              {f.uses && !f.pool && (
                 <div className="feat__uses">
                   <span className="pips" role="group" aria-label={`${f.name} uses`}>
                     {Array.from({ length: f.uses.max }, (_, i) => {
@@ -39,7 +52,7 @@ export function FeaturesWindow({ c, features }: { c: Character; features: Featur
                       );
                     })}
                   </span>
-                  <span className="muted">{left} of {f.uses.max} · {f.uses.recharge === 'short' ? 'short or long rest' : 'long rest'}</span>
+                  <span className="muted">{left} of {f.uses.max} · {recharge(f.uses.recharge)}</span>
                 </div>
               )}
             </div>

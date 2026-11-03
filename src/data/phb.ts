@@ -59,3 +59,33 @@ const SUBCLASS_NAMES: Record<string, string[]> = {
 };
 export const PHB_SUBCLASSES: SubclassData[] = Object.entries(SUBCLASS_NAMES).flatMap(([classId, names]) =>
   names.map((name) => ({ id: name.toLowerCase().replace(/\s+/g, '-'), name, classId, description: '', source: SRC })));
+
+// General feats (level 4+) and fighting styles: names, the abilities their +1 can raise, nothing else.
+const ALL: FeatData['abilities'] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const MENTAL: FeatData['abilities'] = ['int', 'wis', 'cha'];
+const PHYS: FeatData['abilities'] = ['str', 'dex'];
+const general = (id: string, name: string, abilities: FeatData['abilities']): FeatData =>
+  ({ id, name, category: 'general', prerequisiteLevel: 4, abilities, description: '', source: SRC });
+export const PHB_GENERAL_FEATS: FeatData[] = [
+  general('actor', 'Actor', ['cha']), general('athlete', 'Athlete', PHYS), general('charger', 'Charger', PHYS),
+  general('chef', 'Chef', ['con', 'wis']), general('crossbow-expert', 'Crossbow Expert', ['dex']), general('crusher', 'Crusher', ['str', 'con']),
+  general('defensive-duelist', 'Defensive Duelist', ['dex']), general('dual-wielder', 'Dual Wielder', PHYS), general('durable', 'Durable', ['con']),
+  general('elemental-adept', 'Elemental Adept', MENTAL), general('fey-touched', 'Fey-Touched', MENTAL),
+  general('great-weapon-master', 'Great Weapon Master', ['str']), general('heavily-armored', 'Heavily Armored', ['str', 'con']),
+  general('heavy-armor-master', 'Heavy Armor Master', ['str', 'con']), general('inspiring-leader', 'Inspiring Leader', ['wis', 'cha']),
+  general('keen-mind', 'Keen Mind', ['int']), general('lightly-armored', 'Lightly Armored', PHYS), general('mage-slayer', 'Mage Slayer', PHYS),
+  general('martial-weapon-training', 'Martial Weapon Training', PHYS), general('medium-armor-master', 'Medium Armor Master', PHYS),
+  general('moderately-armored', 'Moderately Armored', PHYS), general('mounted-combatant', 'Mounted Combatant', ['str', 'dex', 'wis']),
+  general('observant', 'Observant', ['int', 'wis']), general('piercer', 'Piercer', PHYS), general('poisoner', 'Poisoner', ['dex', 'int']),
+  general('polearm-master', 'Polearm Master', PHYS), general('resilient', 'Resilient', ALL), general('ritual-caster', 'Ritual Caster', MENTAL),
+  general('sentinel', 'Sentinel', PHYS), general('shadow-touched', 'Shadow-Touched', MENTAL), general('sharpshooter', 'Sharpshooter', ['dex']),
+  general('shield-master', 'Shield Master', ['str']), general('skill-expert', 'Skill Expert', ALL), general('skulker', 'Skulker', ['dex']),
+  general('slasher', 'Slasher', PHYS), general('speedy', 'Speedy', ['dex', 'con']), general('spell-sniper', 'Spell Sniper', MENTAL),
+  general('telekinetic', 'Telekinetic', MENTAL), general('telepathic', 'Telepathic', MENTAL), general('war-caster', 'War Caster', MENTAL),
+  general('weapon-master', 'Weapon Master', PHYS),
+];
+const style = (id: string, name: string): FeatData => ({ id, name, category: 'fighting-style', description: '', source: SRC });
+export const PHB_FIGHTING_STYLES: FeatData[] = [
+  style('blind-fighting', 'Blind Fighting'), style('dueling', 'Dueling'), style('interception', 'Interception'),
+  style('protection', 'Protection'), style('thrown-weapon-fighting', 'Thrown Weapon Fighting'), style('unarmed-fighting', 'Unarmed Fighting'),
+];

@@ -2,7 +2,8 @@ import type { Ability, Character } from '../types';
 import { classById, speciesById } from '../data';
 import { ABILITIES, abilityMod, proficiencyBonus, skillBonus } from './abilities';
 import { maxSlots } from './slots';
-import { armorClassOf, originOf } from './origin';
+import { armorClassOf, featuresOf, originOf } from './origin';
+import { attacksPerAction, sneakAttackDice } from './classes';
 
 export const CONDITIONS = [
   'Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible',
@@ -24,7 +25,10 @@ export function derive(c: Character) {
   const origin = originOf(c);
   return {
     origin,
+    features: featuresOf(c),
     ac: armorClassOf(c),
+    attacks: attacksPerAction(c.classId, c.level),
+    sneakAttack: c.classId === 'rogue' ? `${sneakAttackDice(c.level)}d6` : null,
     cls,
     species,
     pb,
@@ -37,7 +41,7 @@ export function derive(c: Character) {
     speed: Math.max(0, (c.speedOverride ?? origin.speed) - 5 * c.exhaustion),
     initiative: mods.dex + origin.initiativeBonus + d20Penalty,
     passivePerception: 10 + skillBonus(c.abilities, c.level, 'perception', c.skills, c.expertise),
-    saveBonus: (a: Ability) => mods[a] + (cls?.saves.includes(a) ? pb : 0) + d20Penalty,
+    saveBonus: (a: Ability) => mods[a] + (cls?.saves.includes(a) || c.saveProficiencies?.includes(a) ? pb : 0) + d20Penalty,
     skill: (id: string) => skillBonus(c.abilities, c.level, id, c.skills, c.expertise) + d20Penalty,
     check: (a: Ability) => mods[a] + d20Penalty,
     hitDie: cls?.hitDie ?? 8,

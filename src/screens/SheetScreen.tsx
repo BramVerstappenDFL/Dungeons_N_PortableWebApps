@@ -8,6 +8,7 @@ import { useStore } from '../store/characters';
 import { derive } from '../rules/derived';
 import { ABILITIES } from '../rules/abilities';
 import { applyXp, bandPct, levelForXp, xpForNext } from '../rules/xp';
+import { MAX_LEVEL, pendingLevels, undoLastLevel } from '../rules/progression';
 import { weaponAttack } from '../rules/weapons';
 import { applyDeathSave } from '../rules/hp';
 import { spendHitDie, finishShortRest } from '../rules/rest';
@@ -63,10 +64,10 @@ export function SheetScreen({ c }: { c: Character }) {
   const addXp = (amount: number) => {
     if (!(amount > 0) || !d.cls) return;
     const from = c.xp, to = from + amount;
-    const { levelsGained } = applyXp(c, amount, d.hitDie, d.origin.hpPerLevel);
-    const leveled = levelsGained > 0;
+    // Crossing a threshold makes a level-up ready; the level-up flow takes it.
+    const leveled = applyXp(c, amount).levelsReady > pendingLevels(c);
     timers.current.forEach(clearTimeout); timers.current = [];
-    set((x) => applyXp(x, amount, d.hitDie, d.origin.hpPerLevel).character);
+    set((x) => applyXp(x, amount).character);
     setSheet(null); setDraft('');
     if (reducedMotion()) {
       setShownXp(to); setLevelUp(leveled);
@@ -97,7 +98,9 @@ export function SheetScreen({ c }: { c: Character }) {
     if (leveled) later(() => setLevelUp(false), last + 4000);
   };
 
-  const shownLvl = Math.max(c.level, levelForXp(shownXp));
+  const shownLvl = c.level;
+  const pending = pendingLevels(c);
+  const barPct = levelForXp(shownXp) > c.level ? 100 : bandPct(shownXp);
   const draftN = Math.max(0, parseInt(draft || '0', 10) || 0);
   const nowPct = bandPct(c.xp);
   const landLevel = Math.max(c.level, levelForXp(c.xp + draftN));
@@ -191,10 +194,14 @@ export function SheetScreen({ c }: { c: Character }) {
               <h1 style={{ letterSpacing: '0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</h1>
               <span className="row muted" style={{ gap: 6 }}>
                 {subtitle}
-                {levelUp && <span className="gr-tag gr-tag--gilt lvl-pop">Level up</span>}
               </span>
             </span>
           </button>
+          {pending > 0 && !orbs && (
+            <Link to="/level-up" className={`gr-btn gr-btn--roll gr-btn--small lvl-ready${levelUp ? ' lvl-pop' : ''}`} style={{ height: 40 }} aria-label={`Level up to ${c.level + 1}`}>
+              <Icon name="star" />Level {c.level + 1}
+            </Link>
+          )}
           <button className="gr-btn gr-btn--secondary gr-btn--icon ico-btn" aria-label="Add experience" onClick={() => { setDraft(''); setSheet('xp'); }}>
             <Icon name="sparkle" />
           </button>
@@ -203,7 +210,7 @@ export function SheetScreen({ c }: { c: Character }) {
           <span className="gr-label" style={{ fontSize: 11, letterSpacing: '0.1em' }}>XP</span>
           <div ref={xpBarRef} className={`xpbar${gaining ? ' is-gaining' : ''}${levelUp ? ' is-levelup' : ''}`} role="progressbar"
             aria-label={`Experience toward level ${Math.min(20, c.level + 1)}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(bandPct(shownXp))}>
-            <div className="xpbar__fill" style={{ width: `${bandPct(shownXp)}%` }} />
+            <div className="xpbar__fill" style={{ width: `${barPct}%` }} />
           </div>
           <span className="num" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{fmt(shownXp)} / {fmt(xpForNext(shownLvl))}</span>
           {orbs && <span className="gr-tag gr-tag--gilt gain-tag">+{fmt(gain)}</span>}
@@ -285,7 +292,7 @@ export function SheetScreen({ c }: { c: Character }) {
           {(c.languages?.length ?? 0) > 0 && <div><dt className="gr-label">Tongues</dt><dd>{c.languages!.map((l) => languageById(l)?.name ?? l).join(', ')}</dd></div>}
         </dl>
 
-        <FeaturesWindow c={c} features={d.origin.features} />
+        <FeaturesWindow c={c} features={d.features} />
 
         <section className="gr-window" style={{ '--tincture': 'var(--tincture-4)', width: '100%' } as CSSProperties}>
           <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{hasSlots ? 'Spell slots' : 'Hit dice'}</span></div></div>
@@ -391,8 +398,19 @@ export function SheetScreen({ c }: { c: Character }) {
           {landLevel > c.level && (
             <div className="gr-notice gr-warn">
               <Icon name="sparkle" />
-              <span><b>Enough for level {landLevel}</b>Your hit points grow with the average for your class. Add new spells in the spellbook.</span>
+              <span><b>Enough for level {landLevel}</b>Add the XP, then tap the gilt level button to choose hit points, features and spells.</span>
             </div>
+          )}
+          {c.level < MAX_LEVEL && (
+            <button className="gr-btn gr-btn--secondary" style={{ height: 44 }} onClick={() => { setSheet(null); nav('/level-up'); }}>
+              <Icon name="star" />Level up to {c.level + 1} now (milestone)
+            </button>
+          )}
+          {c.levelHistory?.at(-1)?.level === c.level && (
+            <button className="gr-btn gr-btn--secondary gr-btn--small" style={{ alignSelf: 'center', whiteSpace: 'nowrap', flex: 'none' }}
+              onClick={() => { set((x) => undoLastLevel(x)); setSheet(null); }}>
+              Undo level {c.level}
+            </button>
           )}
           <div className="grid2">
             <button className="gr-btn gr-btn--secondary" style={{ height: 48 }} onClick={() => setSheet(null)}>Cancel</button>

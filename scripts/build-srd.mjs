@@ -133,6 +133,14 @@ for (const c of classes) {
   const m = /Primary Ability \| ([^|]+)/.exec(t(raw.id, 'description') ?? '');
   c.primary = m ? m[1].trim().split(/ and | or /).map((w) => ABILITY_WORDS[w.trim()]).filter(Boolean) : [];
   c.kits = kitsOf(raw);
+  // Class features by level, and the levels that give an Ability Score Improvement (or feat).
+  c.features = (raw.grants || []).filter((g) => g.item?.startsWith('features.')).map((g) => ({
+    id: g.item.split('.').pop(), name: t(g.item, 'name'), level: Number(/>= (\d+)/.exec(g.when ?? '')?.[1] ?? 1),
+    description: t(g.item, 'description') ?? '',
+  }));
+  const asi = (raw.grants || []).find((g) => g.item?.endsWith('.ability-score-improvement'));
+  const asiYaml = asi ? load(join('features', c.id)).find((f) => f.id === asi.item) : null;
+  c.asiLevels = asiYaml?.choices?.[0]?.slots ?? [4, 8, 12, 16];
 }
 
 /** Mechanics that the app applies: resistances, darkvision, HP per level, speed and granted spells. */
@@ -183,9 +191,17 @@ const subclasses = load('subclasses').map((s) => ({
   description: t(s.id, 'description') ?? '',
 }));
 
-const feats = load('feats').map((f) => ({
-  id: short(f.id), name: t(f.id, 'name'), category: f.fields?.category ?? 'general', description: t(f.id, 'description') ?? '',
-})).sort((a, b) => a.name.localeCompare(b.name));
+const feats = load('feats').map((f) => {
+  const lvl = (f.prerequisites || []).map((p) => /level\.total >= (\d+)/.exec(p.when ?? '')?.[1]).find(Boolean);
+  const abilities = (f.choices || []).find((ch) => ch.id === 'ability')?.from?.options?.map((o) => o.id);
+  return {
+    id: short(f.id), name: t(f.id, 'name'), category: f.fields?.category ?? 'general',
+    ...(lvl ? { prerequisiteLevel: Number(lvl) } : {}),
+    ...(abilities?.length ? { abilities } : {}),
+    ...(f.repeatable ? { repeatable: true } : {}),
+    description: t(f.id, 'description') ?? '',
+  };
+}).sort((a, b) => a.name.localeCompare(b.name));
 
 const languages = load('languages').map((l) => ({ id: short(l.id), name: t(l.id, 'name'), rare: !!l.fields?.rare }))
   .sort((a, b) => a.name.localeCompare(b.name));

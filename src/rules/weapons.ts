@@ -18,13 +18,15 @@ const withMod = (dice: string, mod: number) => (mod === 0 ? dice : `${dice}${mod
  * Attack and damage for a weapon (2024 rules): melee uses STR, ranged uses DEX,
  * finesse uses the better of the two. Proficiency is assumed for now.
  */
-export function weaponAttack(c: Pick<Character, 'abilities' | 'level' | 'exhaustion'>, w: WeaponData): WeaponAttack {
+export function weaponAttack(c: Pick<Character, 'abilities' | 'level' | 'exhaustion'> & Partial<Pick<Character, 'feats'>>, w: WeaponData): WeaponAttack {
   const str = abilityMod(c.abilities.str);
   const dex = abilityMod(c.abilities.dex);
   let ability: 'str' | 'dex' = w.range === 'ranged' ? 'dex' : 'str';
   if (w.properties.includes('finesse')) ability = dex > str ? 'dex' : 'str';
   const mod = ability === 'dex' ? dex : str;
-  const toHit = mod + proficiencyBonus(c.level) - 2 * (c.exhaustion ?? 0);
+  // Archery fighting style: +2 to hit with ranged weapons.
+  const archery = w.range === 'ranged' && c.feats?.some((f) => f.id === 'archery') ? 2 : 0;
+  const toHit = mod + proficiencyBonus(c.level) + archery - 2 * (c.exhaustion ?? 0);
   const reach = w.properties.includes('reach') ? 10 : 5;
   let rangeText = w.range === 'ranged' ? `${w.normalRange}/${w.longRange} ft` : `${reach} feet`;
   if (w.range === 'melee' && w.normalRange) rangeText += ` · thrown ${w.normalRange}/${w.longRange}`;
