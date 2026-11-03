@@ -1,62 +1,118 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { Ability, AbilityScores } from '../types';
-import { BACKGROUNDS, CLASSES, SPECIES, backgroundById, classById, speciesById } from '../data';
+import type { Ability, AbilityScores, Size } from '../types';
+import {
+  BACKGROUNDS, CLASSES, SPECIES, STANDARD_LANGUAGES, backgroundById, classById, featById, languageById,
+  lineageById, lineagesFor, originName, speciesById, speciesSpeed, subclassById, subclassesFor,
+} from '../data';
 import { uid, useStore } from '../store/characters';
-import { ABILITIES, ABILITY_NAMES, POINT_BUY_BUDGET, POINT_BUY_COST, abilityMod, defaultMaxHp, pointBuySpent, skillName } from '../rules/abilities';
-import { applyBoosts, boostsValid, buildCharacter } from '../rules/create';
+import {
+  ABILITIES, ABILITY_NAMES, POINT_BUY_BUDGET, POINT_BUY_COST, abilityMod, defaultMaxHp, pointBuySpent, skillName,
+} from '../rules/abilities';
+import {
+  LANGUAGE_PICKS, applyBoosts, boostsValid, buildCharacter, defaultBoosts, isStandardArray, keyAbility,
+  kitGold, languagesValid, startingArmorClass, suggestedScores, swapScores,
+} from '../rules/create';
 import { Icon } from '../ui/Icon';
 import { cap, signed, excerpt } from '../ui/format';
+import { reducedMotion } from '../ui/theme';
+import { KitPicker, OriginRow, SealProgress, SourceTag, Tick, WaxSeal } from './create/parts';
 import './create.css';
 
-const STEPS = ['Basics', 'Class', 'Abilities', 'Review'];
-/** The ability each class leans on most, for hints and the default background boost. */
-const KEY_ABILITY: Record<string, Ability> = {
-  barbarian: 'str', fighter: 'str', paladin: 'str', monk: 'dex', rogue: 'dex', ranger: 'dex',
-  bard: 'cha', sorcerer: 'cha', warlock: 'cha', cleric: 'wis', druid: 'wis', wizard: 'int',
-};
-const SPECIES_TRAIT: Record<string, string> = {
-  dragonborn: 'Breath weapon', dwarf: 'Poison resistance', elf: 'Darkvision, trance', gnome: 'Gnomish cunning',
-  goliath: 'Giant ancestry', halfling: 'Luck', human: 'Resourceful, skillful', orc: 'Relentless endurance', tiefling: 'Fiendish legacy',
-};
-
-/** A 27-point spread for a class: 15 in its key ability, then CON and DEX, ending 8. */
-function suggestedScores(key: Ability): AbilityScores {
-  const order = [...new Set<Ability>([key, 'con', 'dex', 'wis', 'cha', 'int', 'str'])];
-  const values = [15, 14, 13, 12, 10, 8];
-  return Object.fromEntries(order.map((a, i) => [a, values[i]])) as AbilityScores;
-}
-
-/** Default +2/+1: the class key ability if the background offers it, then the best other option. */
-function defaultBoosts(allowed: Ability[], key: Ability, base: AbilityScores): Partial<Record<Ability, number>> {
-  if (!allowed.length) return {};
-  const sorted = [...allowed].sort((a, b) => (a === key ? -1 : b === key ? 1 : base[b] - base[a]));
-  return { [sorted[0]]: 2, [sorted[1]]: 1 };
-}
+const STEPS = ['Origin', 'Background', 'Class', 'Abilities', 'Gear & tongues', 'Review'];
+const CASTER: Record<string, string> = { full: 'Full caster', half: 'Half caster', pact: 'Pact magic', none: 'No spellcasting' };
+type Method = 'standard' | 'pointbuy';
+type SourceFilter = 'all' | 'SRD 5.2.1' | 'PHB 2024';
 
 export function CreateScreen() {
   const add = useStore((s) => s.add);
   const hasCharacters = useStore((s) => s.characters.length > 0);
   const nav = useNavigate();
+  const mainRef = useRef<HTMLElement>(null);
   const [step, setStep] = useState(0);
+  const [reached, setReached] = useState(0);
+  const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
+  const [sealing, setSealing] = useState(false);
+
   const [name, setName] = useState('');
-  const [speciesId, setSpeciesId] = useState(SPECIES.find((s) => s.id === 'human')?.id ?? SPECIES[0].id);
+  const [speciesId, setSpeciesId] = useState('human');
+  const [lineageId, setLineageId] = useState<string | undefined>();
+  const [size, setSize] = useState<Size>('medium');
   const [backgroundId, setBackgroundId] = useState(BACKGROUNDS[0].id);
+  const [bgFilter, setBgFilter] = useState<SourceFilter>('all');
   const [classId, setClassId] = useState('fighter');
   const [classSkills, setClassSkills] = useState<string[]>([]);
-  const [scores, setScores] = useState<AbilityScores>(() => suggestedScores('str'));
+  const [subclassId, setSubclassId] = useState<string | undefined>();
+  const [method, setMethod] = useState<Method>('standard');
+  const [scores, setScores] = useState<AbilityScores>(() => suggestedScores(keyAbility('fighter')));
+  const [swapFrom, setSwapFrom] = useState<Ability | null>(null);
   const [boosts, setBoosts] = useState<Partial<Record<Ability, number>> | null>(null);
+  const [classKit, setClassKit] = useState('a');
+  const [bgKit, setBgKit] = useState('a');
+  const [languages, setLanguages] = useState<string[]>([]);
 
   const cls = classById(classId)!;
   const bg = backgroundById(backgroundId)!;
   const species = speciesById(speciesId)!;
-  const key = KEY_ABILITY[classId] ?? 'str';
+  const lineage = lineageById(lineageId);
+  const key = keyAbility(classId);
   const effBoosts = boosts ?? defaultBoosts(bg.abilities, key, scores);
   const final = applyBoosts(scores, effBoosts);
   const left = POINT_BUY_BUDGET - pointBuySpent(scores);
   const skillPool = (cls.skillOptions ?? []).filter((s) => !bg.skills.includes(s));
   const skillsOk = classSkills.length === Math.min(cls.skillCount, skillPool.length);
+  const clsKits = cls.kits ?? [];
+  const bgKits = bg.kits ?? [];
+  const chosenKits = [clsKits.find((k) => k.id === classKit), bgKits.find((k) => k.id === bgKit)];
+  const kitArmor = chosenKits.flatMap((k) => k?.items ?? []);
+  const ac = startingArmorClass(classId, final, kitArmor);
+  const hp = defaultMaxHp(cls.hitDie, 1, final.con);
+  const dexMod = abilityMod(final.dex), conMod = abilityMod(final.con);
+  const feat = featById(bg.feat);
+  const speciesLineages = lineagesFor(speciesId);
+  const speed = speciesSpeed(speciesId, lineageId);
 
+  useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); }, [step]);
+
+  const scoresOk = method === 'standard' ? isStandardArray(scores) : left >= 0;
+  const valid = [
+    !!name.trim() && (!species.lineage || !!lineage),
+    true,
+    skillsOk,
+    scoresOk && boostsValid(effBoosts, bg.abilities),
+    languagesValid(languages),
+    true,
+  ];
+  const go = (to: number) => {
+    setDir(to > step ? 'fwd' : 'back');
+    setStep(to);
+    setReached((r) => Math.max(r, to));
+  };
+
+  const pickSpecies = (id: string) => {
+    if (id === speciesId) return;
+    const s = speciesById(id)!;
+    setSpeciesId(id);
+    setLineageId(undefined);
+    setSize(s.sizes?.includes('medium') ? 'medium' : (s.sizes?.[0] ?? 'medium'));
+  };
+  const pickBackground = (id: string) => {
+    const b = backgroundById(id)!;
+    setBackgroundId(id);
+    setBoosts(null);
+    setBgKit(b.kits?.[0]?.id ?? 'a');
+    setClassSkills((l) => l.filter((x) => !b.skills.includes(x)));
+  };
+  const pickClass = (id: string) => {
+    if (id === classId) return;
+    setClassId(id);
+    setClassSkills([]);
+    setSubclassId(undefined);
+    setBoosts(null);
+    setClassKit('a');
+    setSwapFrom(null);
+    setScores(suggestedScores(keyAbility(id)));
+  };
   const setScore = (a: Ability, delta: number) => {
     const v = scores[a] + delta;
     if (v < 8 || v > 15) return;
@@ -64,8 +120,20 @@ export function CreateScreen() {
     if (pointBuySpent(next) > POINT_BUY_BUDGET) return;
     setScores(next);
   };
+  const tapStandard = (a: Ability) => {
+    if (!swapFrom) return setSwapFrom(a);
+    if (swapFrom !== a) setScores((s) => swapScores(s, swapFrom, a));
+    setSwapFrom(null);
+  };
+  const switchMethod = (m: Method) => {
+    setMethod(m);
+    setSwapFrom(null);
+    if (m === 'standard' && !isStandardArray(scores)) setScores(suggestedScores(key));
+  };
   const toggleSkill = (s: string) =>
     setClassSkills((l) => (l.includes(s) ? l.filter((x) => x !== s) : l.length < cls.skillCount ? [...l, s] : l));
+  const toggleLanguage = (id: string) =>
+    setLanguages((l) => (l.includes(id) ? l.filter((x) => x !== id) : l.length < LANGUAGE_PICKS ? [...l, id] : [l[1], id]));
   /** Picks the +2 or the +1 ability; the other one moves out of the way. */
   const pickBoost = (a: Ability, amount: 1 | 2) => {
     const find = (v: number) => (Object.keys(effBoosts) as Ability[]).find((k) => effBoosts[k] === v);
@@ -79,18 +147,23 @@ export function CreateScreen() {
   };
   const spread = () => setBoosts(Object.fromEntries(bg.abilities.map((a) => [a, 1])));
 
-  const canNext = step === 0 ? !!name.trim() : step === 1 ? skillsOk : step === 2 ? boostsValid(effBoosts, bg.abilities) : true;
   const create = () => {
-    add(buildCharacter({
+    const c = buildCharacter({
       id: uid(), name, speciesId, backgroundId, classId, base: scores, boosts: effBoosts,
-      classSkills, backgroundSkills: bg.skills, now: Date.now(),
-    }));
-    nav('/', { replace: true });
+      classSkills, backgroundSkills: bg.skills, now: Date.now(), method,
+      lineageId, size: (species.sizes?.length ?? 0) > 1 ? size : undefined, subclassId,
+      originFeat: bg.feat, originFeatNote: bg.featNote, languages, kits: chosenKits, makeId: uid,
+    });
+    const finish = () => { add(c); nav('/', { replace: true }); };
+    if (reducedMotion()) return finish();
+    setSealing(true);
+    window.setTimeout(finish, 900);
   };
-  const conMod = abilityMod(final.con), dexMod = abilityMod(final.dex);
+
+  const backgrounds = BACKGROUNDS.filter((b) => bgFilter === 'all' || (b.source ?? 'SRD 5.2.1') === bgFilter);
 
   return (
-    <div className="screen">
+    <div className="screen create-flow">
       <header className="hdr" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
         <div className="row" style={{ gap: 12 }}>
           {hasCharacters && (
@@ -98,184 +171,339 @@ export function CreateScreen() {
           )}
           <div className="col" style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <h1 className="sub" style={{ margin: 0, font: '600 22px/1.15 var(--font-heading)' }}>New character</h1>
-            <span className="muted">Step {step + 1} of 4 · {STEPS[step]}</span>
+            <span className="muted step-label" key={step}>Step {step + 1} of {STEPS.length} · {STEPS[step]}</span>
           </div>
         </div>
-        <div className="row" style={{ gap: 6 }} aria-hidden="true">
-          {STEPS.map((s, i) => <span key={s} className={i <= step ? 'progress-seg on' : 'progress-seg'} />)}
-        </div>
+        <SealProgress steps={STEPS} step={step} reached={reached} onJump={go} />
       </header>
 
-      <main className="scroll" style={{ padding: '20px 16px 24px', gap: 20 }}>
-        {step === 0 && (
-          <>
-            {!hasCharacters && (
-              <div className="gr-notice gr-hint">
-                <Icon name="info" />
-                <span><b>Welcome</b>Build a level 1 hero in four steps. Everything is saved on this device.</span>
+      <main ref={mainRef} className="scroll" style={{ padding: '20px 16px 28px' }}>
+        <div key={step} className={`page page--${dir}`}>
+          {step === 0 && (
+            <>
+              {!hasCharacters && (
+                <div className="gr-notice gr-hint rise" style={{ '--i': 0 } as CSSProperties}>
+                  <Icon name="info" />
+                  <span><b>Welcome</b>Build a level 1 hero in six steps. Everything is saved on this device.</span>
+                </div>
+              )}
+              <div className="gr-field rise" style={{ width: '100%', '--i': 1 } as CSSProperties}>
+                <label htmlFor="charName" className="gr-label">Name</label>
+                <input id="charName" className="gr-input" style={{ height: 48 }} placeholder="What does the table call you?" value={name}
+                  onChange={(e) => setName(e.target.value)} autoComplete="off" />
               </div>
-            )}
-            <div className="gr-field" style={{ width: '100%' }}>
-              <label htmlFor="charName" className="gr-label">Name</label>
-              <input id="charName" className="gr-input" style={{ height: 48 }} placeholder="What does the table call you?" value={name}
-                onChange={(e) => setName(e.target.value)} autoComplete="off" />
-            </div>
-            <div className="col" style={{ gap: 8 }}>
-              <span className="gr-label">Species</span>
-              <div className="panel">
-                {SPECIES.map((s) => (
-                  <button key={s.id} className={s.id === speciesId ? 'pick is-on' : 'pick'} onClick={() => setSpeciesId(s.id)} aria-pressed={s.id === speciesId}>
-                    <i className="gr-row__pip" />
-                    <span style={{ flex: 1 }}>{s.name}</span>
-                    <span className="muted" style={{ fontWeight: 400 }}>{SPECIES_TRAIT[s.id] ?? `Speed ${s.speed} ft`}</span>
-                  </button>
-                ))}
+              <div className="col" style={{ gap: 8 }}>
+                <div className="row" style={{ alignItems: 'baseline' }}>
+                  <span className="gr-label" style={{ flex: 1 }}>Species</span>
+                  <span className="muted">{SPECIES.length} to choose from</span>
+                </div>
+                <div className="olist">
+                  {SPECIES.map((s, i) => (
+                    <OriginRow key={s.id} index={i + 2} tincture={i} on={s.id === speciesId} title={s.name} source={s.source}
+                      meta={`${(s.sizes ?? [s.size]).map(cap).join(' or ')} · ${s.speed} ft`} onPick={() => pickSpecies(s.id)}>
+                      <div className="traits">
+                        {(s.traits ?? []).map((t, j) => (
+                          <div key={t.id} className="trait" style={{ '--i': j } as CSSProperties}>
+                            <b>{t.name}</b>
+                            {t.description && <span className="muted">{excerpt(t.description, 150)}</span>}
+                          </div>
+                        ))}
+                      </div>
+                      {(s.sizes?.length ?? 0) > 1 && (
+                        <div className="col" style={{ gap: 6 }}>
+                          <span className="gr-label">Size</span>
+                          <div className="seg" role="group" aria-label="Size">
+                            {s.sizes!.map((z) => (
+                              <button key={z} className={size === z ? 'segbtn is-on' : 'segbtn'} aria-pressed={size === z} onClick={() => setSize(z)}>{cap(z)}</button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {s.lineage && (
+                        <div className="col" style={{ gap: 6 }}>
+                          <span className="gr-label">{s.id === 'dragonborn' ? 'Draconic ancestry' : s.id === 'goliath' ? 'Giant ancestry' : s.id === 'tiefling' ? 'Fiendish legacy' : 'Lineage'}</span>
+                          <div className="chips" role="radiogroup" aria-label="Lineage">
+                            {speciesLineages.map((l) => (
+                              <button key={l.id} role="radio" aria-checked={l.id === lineageId}
+                                className={`gr-chip filter${l.id === lineageId ? ' is-on' : ''}`} onClick={() => setLineageId(l.id)}>
+                                {l.name.replace(/ Dragon$/, '').replace(/ Giant$/, '')}
+                              </button>
+                            ))}
+                          </div>
+                          {lineage
+                            ? <span key={lineage.id} className="muted fade-up">{lineage.damageType ? `${cap(lineage.damageType)} damage. ` : ''}{excerpt(lineage.description, 180)}</span>
+                            : <span className="muted">Pick one to continue.</span>}
+                        </div>
+                      )}
+                      {s.source === 'PHB 2024' && <span className="muted">Traits are listed by name; see the Player's Handbook for the rules.</span>}
+                    </OriginRow>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="col" style={{ gap: 8 }}>
-              <span className="gr-label">Background</span>
-              <div className="panel">
-                {BACKGROUNDS.map((b) => (
-                  <button key={b.id} className={b.id === backgroundId ? 'pick is-on' : 'pick'} aria-pressed={b.id === backgroundId}
-                    onClick={() => { setBackgroundId(b.id); setBoosts(null); setClassSkills((l) => l.filter((x) => !b.skills.includes(x))); }}>
-                    <i className="gr-row__pip" />
-                    <span style={{ flex: 1 }}>{b.name}</span>
-                    <span className="muted" style={{ fontWeight: 400, textAlign: 'right' }}>{b.skills.map(skillName).join(', ')}</span>
-                  </button>
-                ))}
-              </div>
-              <span className="muted">{excerpt(bg.description.split('**Equipment:**')[0], 160)}</span>
-            </div>
-          </>
-        )}
+            </>
+          )}
 
-        {step === 1 && (
-          <>
-            <div className="col" style={{ gap: 12 }}>
-              <span className="gr-label">Class</span>
+          {step === 1 && (
+            <>
+              <div className="seg rise" role="group" aria-label="Source" style={{ '--i': 0 } as CSSProperties}>
+                {([['all', `All ${BACKGROUNDS.length}`], ['SRD 5.2.1', 'SRD'], ['PHB 2024', 'PHB']] as const).map(([v, l]) => (
+                  <button key={v} className={bgFilter === v ? 'segbtn is-on' : 'segbtn'} aria-pressed={bgFilter === v} onClick={() => setBgFilter(v)}>{l}</button>
+                ))}
+              </div>
+              <div className="olist" key={bgFilter}>
+                {backgrounds.map((b, i) => (
+                  <OriginRow key={b.id} index={i + 1} tincture={i + 2} on={b.id === backgroundId} title={b.name} source={b.source}
+                    meta={b.skills.map(skillName).join(', ')} onPick={() => pickBackground(b.id)}>
+                    <div className="facts">
+                      <span className="gr-label">Abilities</span>
+                      <span className="chips">{b.abilities.map((a) => <span key={a} className="gr-tag">{a.toUpperCase()}</span>)}</span>
+                      <span className="gr-label">Origin feat</span>
+                      <span><b>{featById(b.feat)?.name ?? cap(b.feat ?? '')}</b>{b.featNote ? ` (${b.featNote})` : ''}</span>
+                      <span className="gr-label">Skills</span>
+                      <span>{b.skills.map(skillName).join(' and ')}</span>
+                      {b.tool && <><span className="gr-label">Tool</span><span>{b.tool}</span></>}
+                    </div>
+                    {featById(b.feat)?.description && (
+                      <span className="muted">{excerpt(featById(b.feat)!.description.replace(/^Origin Feat\s*/, ''), 170)}</span>
+                    )}
+                  </OriginRow>
+                ))}
+              </div>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
               <div className="grid2">
-                {CLASSES.map((k) => (
-                  <button key={k.id} className={k.id === classId ? 'cls is-on' : 'cls'} aria-pressed={k.id === classId}
-                    onClick={() => { setClassId(k.id); setClassSkills([]); setBoosts(null); setScores(suggestedScores(KEY_ABILITY[k.id] ?? 'str')); }}>
+                {CLASSES.map((k, i) => (
+                  <button key={k.id} className={k.id === classId ? 'cls is-on rise' : 'cls rise'} aria-pressed={k.id === classId}
+                    style={{ '--i': i, '--tincture': `var(--tincture-${(i % 6) + 1})` } as CSSProperties} onClick={() => pickClass(k.id)}>
                     <span style={{ font: '600 18px/1.15 var(--font-heading)' }}>{k.name}</span>
                     <span className="muted">Hit die d{k.hitDie}</span>
-                    <span className="muted">Key: {ABILITY_NAMES[KEY_ABILITY[k.id] ?? 'str']}</span>
+                    <span className="muted">Key: {(k.primary?.length ? k.primary : [keyAbility(k.id)]).map((a) => ABILITY_NAMES[a]).join(' / ')}</span>
                   </button>
                 ))}
               </div>
-            </div>
-            <div className="col" style={{ gap: 8 }}>
-              <div className="row" style={{ alignItems: 'baseline' }}>
-                <span className="gr-label" style={{ flex: 1 }}>{cls.name} skills</span>
-                <span className="muted">{classSkills.length} of {Math.min(cls.skillCount, skillPool.length)}</span>
-              </div>
-              <div className="chips" role="group" aria-label="Class skills">
-                {skillPool.map((s) => (
-                  <button key={s} className={`gr-chip filter${classSkills.includes(s) ? ' is-on' : ''}`} aria-pressed={classSkills.includes(s)} onClick={() => toggleSkill(s)}>
-                    {skillName(s)}
-                  </button>
-                ))}
-              </div>
-              <span className="muted">Your background already gives {bg.skills.map(skillName).join(' and ')}.</span>
-            </div>
-          </>
-        )}
-
-        {step === 2 && (
-          <div className="col" style={{ gap: 12 }}>
-            <div className="panel panel--sm row" style={{ gap: 12, padding: 12, boxShadow: 'var(--shadow-sm)' }}>
-              <div className="col" style={{ gap: 2, flex: 1 }}>
-                <span style={{ fontWeight: 700 }}>Point buy</span>
-                <span className="muted">Scores 8 to 15. 14 and 15 cost 2 points each.</span>
-              </div>
-              <span className="num" style={{ fontSize: 30 }}>{left}</span>
-              <span className="gr-label" style={{ fontSize: 11 }}>left</span>
-            </div>
-            <div className="panel">
-              {ABILITIES.map((a) => {
-                const cost = POINT_BUY_COST[scores[a] + 1] - POINT_BUY_COST[scores[a]];
-                return (
-                  <div key={a} className="abrow">
-                    <span style={{ width: 92, fontWeight: 700 }}>{ABILITY_NAMES[a]}</span>
-                    <span className="num" style={{ width: 44, fontSize: 15, color: 'var(--text-muted)' }}>
-                      {signed(abilityMod(final[a]))}{effBoosts[a] ? <sup style={{ fontSize: 10, color: 'var(--accent)' }}> +{effBoosts[a]}</sup> : null}
-                    </span>
-                    <div className="gr-stepper" style={{ marginLeft: 'auto', height: 44 }}>
-                      <button onClick={() => setScore(a, -1)} aria-label={`Lower ${ABILITY_NAMES[a]}`} disabled={scores[a] <= 8}><Icon name="minus" /></button>
-                      <output>{scores[a]}</output>
-                      <button onClick={() => setScore(a, 1)} aria-label={`Raise ${ABILITY_NAMES[a]}`} disabled={scores[a] >= 15 || cost > left}><Icon name="plus" /></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <section className="gr-window" style={{ '--tincture': 'var(--tincture-3)', width: '100%' } as CSSProperties}>
-              <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{bg.name} increases</span></div></div>
-              <div className="gr-window__body" style={{ gap: 10 }}>
-                {([2, 1] as const).map((amt) => (
-                  <div key={amt} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                    <span className="num" style={{ width: 28, fontSize: 16 }}>+{amt}</span>
-                    {bg.abilities.map((a) => (
-                      <button key={a} className={`gr-chip filter${effBoosts[a] === amt ? ' is-on' : ''}`} aria-pressed={effBoosts[a] === amt} onClick={() => pickBoost(a, amt)}>
-                        {ABILITY_NAMES[a]}
-                      </button>
+              <section key={classId} className="gr-window unfold" style={{ '--tincture': `var(--tincture-${(CLASSES.indexOf(cls) % 6) + 1})`, width: '100%' } as CSSProperties}>
+                <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>The {cls.name}</span></div></div>
+                <div className="gr-window__body" style={{ gap: 14 }}>
+                  <div className="grid3">
+                    {[['Hit die', `d${cls.hitDie}`], ['Saves', cls.saves.map((s) => s.toUpperCase()).join(' ')], ['Magic', CASTER[cls.casterType].replace(' caster', '')]].map(([k, v]) => (
+                      <div key={k} className="stat" style={{ background: 'var(--bg)' }}><span className="gr-label">{k}</span><span className="num" style={{ fontSize: 17 }}>{v}</span></div>
                     ))}
                   </div>
-                ))}
-                <button className="gr-btn gr-btn--secondary gr-btn--small" style={{ alignSelf: 'flex-start' }} onClick={spread}>+1 to all three instead</button>
-              </div>
-            </section>
-            <div className="gr-notice gr-hint">
-              <Icon name="info" />
-              <span>Put your highest score in {ABILITY_NAMES[key]} for a {cls.name.toLowerCase()}.</span>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="col" style={{ gap: 16 }}>
-            <section className="gr-window" style={{ '--tincture': 'var(--tincture-4)', width: '100%' } as CSSProperties}>
-              <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{name.trim() || 'Unnamed hero'}</span></div></div>
-              <div className="gr-window__body">
-                <span style={{ fontSize: 16 }}>Level 1 · {species.name} {cls.name.toLowerCase()} · {bg.name}</span>
-                <div className="grid3">
-                  {[['HP', defaultMaxHp(cls.hitDie, 1, final.con)], ['AC', 10 + dexMod], ['Init', signed(dexMod)]].map(([k, v]) => (
-                    <div key={k} className="stat" style={{ background: 'var(--bg)' }}><span className="gr-label">{k}</span><span className="num" style={{ fontSize: 22 }}>{v}</span></div>
-                  ))}
+                  <div className="col" style={{ gap: 8 }}>
+                    <div className="row" style={{ alignItems: 'baseline' }}>
+                      <span className="gr-label" style={{ flex: 1 }}>Skills</span>
+                      <span className="muted"><Tick value={classSkills.length} /> of {Math.min(cls.skillCount, skillPool.length)}</span>
+                    </div>
+                    <div className="chips" role="group" aria-label="Class skills">
+                      {skillPool.map((s) => (
+                        <button key={s} className={`gr-chip filter${classSkills.includes(s) ? ' is-on' : ''}`} aria-pressed={classSkills.includes(s)} onClick={() => toggleSkill(s)}>
+                          {skillName(s)}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="muted">Your background already gives {bg.skills.map(skillName).join(' and ')}.</span>
+                  </div>
+                  <div className="col" style={{ gap: 8 }}>
+                    <div className="row" style={{ alignItems: 'baseline' }}>
+                      <span className="gr-label" style={{ flex: 1 }}>Path at level 3</span>
+                      <span className="muted">Optional</span>
+                    </div>
+                    <div className="chips" role="radiogroup" aria-label="Subclass">
+                      {subclassesFor(classId).map((sc) => (
+                        <button key={sc.id} role="radio" aria-checked={sc.id === subclassId}
+                          className={`gr-chip filter${sc.id === subclassId ? ' is-on' : ''}`} onClick={() => setSubclassId(sc.id === subclassId ? undefined : sc.id)}>
+                          {sc.name}<SourceTag source={sc.source} />
+                        </button>
+                      ))}
+                    </div>
+                    {subclassId && (
+                      <span key={subclassId} className="muted fade-up">
+                        {subclassById(subclassId)?.description ? excerpt(subclassById(subclassId)!.description, 200) : 'Listed by name; see the Player\'s Handbook for its features.'}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 4 }}>
-                  {ABILITIES.map((a) => (
-                    <div key={a} className="col" style={{ alignItems: 'center', border: '2px solid var(--ink)' }}>
-                      <span style={{ width: '100%', textAlign: 'center', background: 'var(--ink)', color: 'var(--paper)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', padding: '3px 0' }}>{a.toUpperCase()}</span>
-                      <span className="num" style={{ fontSize: 18, lineHeight: 1.3 }}>{signed(abilityMod(final[a]))}</span>
-                      <span className="muted" style={{ paddingBottom: 4 }}>{final[a]}</span>
+              </section>
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <div className="seg rise" role="group" aria-label="Score method" style={{ '--i': 0 } as CSSProperties}>
+                {([['standard', 'Standard array'], ['pointbuy', 'Point buy']] as const).map(([m, l]) => (
+                  <button key={m} className={method === m ? 'segbtn is-on' : 'segbtn'} aria-pressed={method === m} onClick={() => switchMethod(m)}>{l}</button>
+                ))}
+              </div>
+              <div className="panel panel--sm row rise" style={{ gap: 12, padding: 12, '--i': 1 } as CSSProperties}>
+                <div className="col" style={{ gap: 2, flex: 1 }}>
+                  <span style={{ fontWeight: 700 }}>{method === 'standard' ? 'Standard array' : 'Point buy'}</span>
+                  <span className="muted">
+                    {method === 'standard'
+                      ? swapFrom ? `Tap another ability to swap with ${ABILITY_NAMES[swapFrom]}.` : '15, 14, 13, 12, 10, 8. Tap two scores to swap them.'
+                      : 'Scores 8 to 15. 14 and 15 cost 2 points each.'}
+                  </span>
+                </div>
+                {method === 'pointbuy' && <><Tick value={left} style={{ fontSize: 30 }} /><span className="gr-label" style={{ fontSize: 11 }}>left</span></>}
+              </div>
+              <div className="panel rise" style={{ '--i': 2 } as CSSProperties}>
+                {ABILITIES.map((a) => {
+                  const cost = POINT_BUY_COST[scores[a] + 1] - POINT_BUY_COST[scores[a]];
+                  return (
+                    <div key={a} className={`abrow${a === key ? ' is-key' : ''}`}>
+                      <span style={{ width: 112, fontWeight: 700, whiteSpace: 'nowrap' }}>{ABILITY_NAMES[a]}</span>
+                      <span className="num" style={{ width: 52, fontSize: 15, color: 'var(--text-muted)' }}>
+                        <Tick value={abilityMod(final[a])} sign />
+                        {effBoosts[a] ? <sup key={`${a}${effBoosts[a]}`} className="boost-badge"> +{effBoosts[a]}</sup> : null}
+                      </span>
+                      {method === 'pointbuy' ? (
+                        <div className="gr-stepper" style={{ marginLeft: 'auto', height: 44 }}>
+                          <button onClick={() => setScore(a, -1)} aria-label={`Lower ${ABILITY_NAMES[a]}`} disabled={scores[a] <= 8}><Icon name="minus" /></button>
+                          <output key={scores[a]} className="tick">{scores[a]}</output>
+                          <button onClick={() => setScore(a, 1)} aria-label={`Raise ${ABILITY_NAMES[a]}`} disabled={scores[a] >= 15 || cost > left}><Icon name="plus" /></button>
+                        </div>
+                      ) : (
+                        <button className={`score-tile${swapFrom === a ? ' is-lifted' : ''}`} onClick={() => tapStandard(a)}
+                          aria-pressed={swapFrom === a} aria-label={`${ABILITY_NAMES[a]} ${scores[a]}${swapFrom ? `, swap with ${ABILITY_NAMES[swapFrom]}` : ''}`}>
+                          <span key={scores[a]} className="num tick">{scores[a]}</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <section className="gr-window rise" style={{ '--tincture': 'var(--tincture-3)', width: '100%', '--i': 3 } as CSSProperties}>
+                <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{bg.name} increases</span></div></div>
+                <div className="gr-window__body" style={{ gap: 10 }}>
+                  {([2, 1] as const).map((amt) => (
+                    <div key={amt} className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                      <span className="num" style={{ width: 28, fontSize: 16 }}>+{amt}</span>
+                      {bg.abilities.map((a) => (
+                        <button key={a} className={`gr-chip filter${effBoosts[a] === amt ? ' is-on' : ''}`} aria-pressed={effBoosts[a] === amt} onClick={() => pickBoost(a, amt)}>
+                          {ABILITY_NAMES[a]}
+                        </button>
+                      ))}
                     </div>
                   ))}
+                  <button className="gr-btn gr-btn--secondary gr-btn--small" style={{ alignSelf: 'flex-start' }} onClick={spread}>+1 to all three instead</button>
                 </div>
-                <span className="muted">Skills: {[...new Set([...bg.skills, ...classSkills])].map(skillName).join(', ')}. Saves: {cls.saves.map(cap).join(', ')}.</span>
+              </section>
+              <div className="gr-notice gr-hint rise" style={{ '--i': 4 } as CSSProperties}>
+                <Icon name="info" />
+                <span>Put your highest score in {ABILITY_NAMES[key]} for a {cls.name.toLowerCase()}.</span>
               </div>
-            </section>
-            <div className="gr-notice gr-ok">
-              <Icon name="check" />
-              <span><b>Ready for the table</b>Equipment and spells can be added from the sheet. HP starts at {defaultMaxHp(cls.hitDie, 1, final.con)} ({cls.hitDie} {signed(conMod)} CON).</span>
-            </div>
-          </div>
-        )}
+            </>
+          )}
+
+          {step === 4 && (
+            <>
+              <KitPicker label={`${cls.name} equipment`} kits={clsKits} value={classKit} onPick={setClassKit} />
+              <KitPicker label={`${bg.name} equipment`} kits={bgKits} value={bgKit} onPick={setBgKit} />
+              <div className="panel panel--sm row rise" style={{ gap: 16, padding: 12, '--i': 4 } as CSSProperties}>
+                <div className="col" style={{ gap: 2, flex: 1 }}>
+                  <span style={{ fontWeight: 700 }}>Starting purse and armour</span>
+                  <span className="muted">AC uses the best armour in your kits.</span>
+                </div>
+                <div className="col" style={{ alignItems: 'center' }}><Tick value={kitGold(chosenKits)} style={{ fontSize: 22 }} /><span className="gr-label" style={{ fontSize: 11 }}>GP</span></div>
+                <div className="col" style={{ alignItems: 'center' }}><Tick value={ac} style={{ fontSize: 22 }} /><span className="gr-label" style={{ fontSize: 11 }}>AC</span></div>
+              </div>
+              <div className="col rise" style={{ gap: 8, '--i': 5 } as CSSProperties}>
+                <div className="row" style={{ alignItems: 'baseline' }}>
+                  <span className="gr-label" style={{ flex: 1 }}>Languages</span>
+                  <span className="muted"><Tick value={languages.length} /> of {LANGUAGE_PICKS}</span>
+                </div>
+                <div className="chips" role="group" aria-label="Languages">
+                  <span className="gr-chip filter is-on lang-locked"><Icon name="check" />Common</span>
+                  {STANDARD_LANGUAGES.map((l) => (
+                    <button key={l.id} className={`gr-chip filter${languages.includes(l.id) ? ' is-on' : ''}`} aria-pressed={languages.includes(l.id)} onClick={() => toggleLanguage(l.id)}>
+                      {l.name}
+                    </button>
+                  ))}
+                </div>
+                <span className="muted">Everyone speaks Common. Pick two standard languages.</span>
+              </div>
+            </>
+          )}
+
+          {step === 5 && (
+            <>
+              <section className="gr-window unroll" style={{ '--tincture': 'var(--tincture-4)', width: '100%' } as CSSProperties}>
+                <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{name.trim() || 'Unnamed hero'}</span></div></div>
+                <div className="gr-window__body" style={{ position: 'relative' }}>
+                  <WaxSeal className="wax--review" />
+                  <span style={{ fontSize: 16, paddingRight: 56 }}>
+                    Level 1 · {originName(speciesId, lineageId)} {cls.name.toLowerCase()} · {bg.name}
+                  </span>
+                  <div className="grid3">
+                    {([['HP', hp, false], ['AC', ac, false], ['Init', dexMod, true]] as const).map(([k, v, sign], i) => (
+                      <div key={k} className="stat flip" style={{ background: 'var(--bg)', '--i': i } as CSSProperties}>
+                        <span className="gr-label">{k}</span><ReviewNumber value={v} sign={sign} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 4 }}>
+                    {ABILITIES.map((a, i) => (
+                      <div key={a} className="col flip" style={{ alignItems: 'center', border: '2px solid var(--ink)', '--i': i + 3 } as CSSProperties}>
+                        <span style={{ width: '100%', textAlign: 'center', background: 'var(--ink)', color: 'var(--paper)', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', padding: '3px 0' }}>{a.toUpperCase()}</span>
+                        <span className="num" style={{ fontSize: 18, lineHeight: 1.3 }}>{signed(abilityMod(final[a]))}</span>
+                        <span className="muted" style={{ paddingBottom: 4 }}>{final[a]}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <dl className="ledger">
+                    {[
+                      ['Origin', `${originName(speciesId, lineageId)} · ${(species.sizes?.length ?? 0) > 1 ? cap(size) : cap(species.size)} · ${speed} ft`],
+                      ['Feat', `${feat?.name ?? cap(bg.feat ?? '')}${bg.featNote ? ` (${bg.featNote})` : ''}`],
+                      ['Path', subclassId ? `${subclassById(subclassId)?.name} at level 3` : 'Chosen at level 3'],
+                      ['Skills', [...new Set([...bg.skills, ...classSkills])].map(skillName).join(', ')],
+                      ['Saves', cls.saves.map(cap).join(', ')],
+                      ['Tongues', ['Common', ...languages.map((l) => languageById(l)?.name ?? l)].join(', ')],
+                      ['Pack', `${chosenKits.reduce((n, k) => n + (k?.items.length ?? 0), 0)} items · ${kitGold(chosenKits)} GP`],
+                    ].map(([k, v], i) => (
+                      <div key={k} className="ledger__row" style={{ '--i': i + 9 } as CSSProperties}><dt className="gr-label">{k}</dt><dd>{v}</dd></div>
+                    ))}
+                  </dl>
+                </div>
+              </section>
+              <div className="gr-notice gr-ok rise" style={{ '--i': 14 } as CSSProperties}>
+                <Icon name="check" />
+                <span><b>Ready for the table</b>HP starts at {hp} ({cls.hitDie} {signed(conMod)} CON). Spells can be added from the sheet.</span>
+              </div>
+            </>
+          )}
+        </div>
       </main>
 
       <footer className="foot foot--lg grid2" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
-        <button className="gr-btn gr-btn--secondary" style={{ height: 48 }} onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+        <button className="gr-btn gr-btn--secondary" style={{ height: 48 }} onClick={() => go(Math.max(0, step - 1))} disabled={step === 0}>
           <Icon name="back" />Back
         </button>
-        {step < 3 ? (
-          <button className="gr-btn gr-btn--primary" style={{ height: 48 }} onClick={() => setStep((s) => s + 1)} disabled={!canNext}>
+        {step < STEPS.length - 1 ? (
+          <button className="gr-btn gr-btn--primary" style={{ height: 48 }} onClick={() => go(step + 1)} disabled={!valid[step]}>
             Next<Icon name="next" />
           </button>
         ) : (
-          <button className="gr-btn gr-btn--primary" style={{ height: 48 }} onClick={create}><Icon name="check" />Create character</button>
+          <button className="gr-btn gr-btn--primary create-btn" style={{ height: 48 }} onClick={create} disabled={sealing}><Icon name="check" />Create character</button>
         )}
       </footer>
+
+      {sealing && (
+        <div className="sealing" role="status" aria-live="polite">
+          <div className="sealing__burst" aria-hidden="true">
+            {Array.from({ length: 8 }, (_, i) => <i key={i} style={{ '--a': `${i * 45}deg` } as CSSProperties} />)}
+          </div>
+          <WaxSeal className="wax--big" />
+          <span className="sealing__name">{name.trim()}</span>
+          <span className="muted">joins the table</span>
+        </div>
+      )}
     </div>
   );
 }
 
+/** Review stats tally up from zero. */
+function ReviewNumber({ value, sign }: { value: number; sign?: boolean }) {
+  return <Tick value={value} sign={sign} from={0} style={{ fontSize: 22 }} />;
+}

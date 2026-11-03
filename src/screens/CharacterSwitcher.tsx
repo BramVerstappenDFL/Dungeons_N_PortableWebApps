@@ -1,7 +1,7 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Character } from '../types';
-import { classById, speciesById } from '../data';
+import { classById, originName } from '../data';
 import { useStore } from '../store/characters';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Icon } from '../ui/Icon';
@@ -47,7 +47,7 @@ export function CharacterSwitcher({ onClose }: { onClose: () => void }) {
             <span className="gr-token" style={{ '--tincture': TINTS[i % TINTS.length], width: 40, height: 40, fontSize: 18 } as CSSProperties}>{c.name.charAt(0).toUpperCase()}</span>
             <span className="col" style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <span style={{ fontWeight: 700, fontSize: 16 }}>{c.name}</span>
-              <span className="muted">Level {c.level} · {speciesById(c.speciesId)?.name} {classById(c.classId)?.name.toLowerCase()}</span>
+              <span className="muted">Level {c.level} · {originName(c.speciesId, c.lineageId)} {classById(c.classId)?.name.toLowerCase()}</span>
             </span>
             {c.id === active?.id && <Icon name="check" />}
           </button>

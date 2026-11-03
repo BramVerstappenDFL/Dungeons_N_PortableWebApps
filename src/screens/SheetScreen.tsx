@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Ability, Character } from '../types';
-import { backgroundById, weaponById } from '../data';
+import { backgroundById, featById, languageById, originName, subclassById, weaponById } from '../data';
 import { useStore } from '../store/characters';
 import { derive } from '../rules/derived';
 import { ABILITIES } from '../rules/abilities';
@@ -155,7 +155,7 @@ export function SheetScreen({ c }: { c: Character }) {
   const isCaster = d.slotsMax.some((n) => n > 0) || c.spells.length > 0;
 
   const bg = backgroundById(c.backgroundId);
-  const subtitle = [`Level ${shownLvl}`, [d.species?.name, d.cls?.name.toLowerCase()].filter(Boolean).join(' '), bg?.name].filter(Boolean).join(' · ');
+  const subtitle = [`Level ${shownLvl}`, [d.species ? originName(c.speciesId, c.lineageId) : undefined, d.cls?.name.toLowerCase()].filter(Boolean).join(' '), bg?.name].filter(Boolean).join(' · ');
 
   // ---- Spell slots ----
   const toggleSlot = (lvl: number, idx: number) => set((x) => {
@@ -270,6 +270,14 @@ export function SheetScreen({ c }: { c: Character }) {
           </div>
           <span className="muted">Gold pips mark proficient saving throws.</span>
         </section>
+
+        {(c.originFeat || c.subclassId || (c.languages?.length ?? 0) > 0) && (
+          <dl className="origin-facts">
+            {c.originFeat && <div><dt className="gr-label">Feat</dt><dd>{featById(c.originFeat)?.name ?? c.originFeat}{c.originFeatNote ? ` (${c.originFeatNote})` : ''}</dd></div>}
+            {c.subclassId && <div><dt className="gr-label">Path</dt><dd>{subclassById(c.subclassId)?.name}{c.level < 3 ? ' (from level 3)' : ''}</dd></div>}
+            {(c.languages?.length ?? 0) > 0 && <div><dt className="gr-label">Tongues</dt><dd>{c.languages!.map((l) => languageById(l)?.name ?? l).join(', ')}</dd></div>}
+          </dl>
+        )}
 
         <section className="gr-window" style={{ '--tincture': 'var(--tincture-4)', width: '100%' } as CSSProperties}>
           <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{isCaster ? 'Spell slots' : 'Hit dice'}</span></div></div>

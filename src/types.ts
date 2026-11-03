@@ -11,9 +11,27 @@ export interface ClassData {
   skillOptions: string[] | null;
   spellAbility: Ability | null;
   casterType: CasterType;
+  primary?: Ability[];
+  kits?: StartingKit[];
 }
-export interface SpeciesData { id: string; name: string; speed: number; size: string; description: string }
-export interface BackgroundData { id: string; name: string; skills: string[]; abilities: Ability[]; description: string }
+/** Where an entry comes from. PHB 2024 entries carry names and mechanics only, never rules text. */
+export type Source = 'SRD 5.2.1' | 'PHB 2024';
+export interface KitItem { name: string; qty: number; weight: number; weaponId?: string; armor?: { category: 'light' | 'medium' | 'heavy' | 'shield'; ac: number } }
+export interface StartingKit { id: string; items: KitItem[]; gp: number }
+export interface TraitData { id: string; name: string; description: string }
+export type Size = 'small' | 'medium';
+export interface SpeciesData {
+  id: string; name: string; speed: number; size: string; description: string;
+  sizes?: Size[]; lineage?: boolean; traits?: TraitData[]; source?: Source;
+}
+export interface BackgroundData {
+  id: string; name: string; skills: string[]; abilities: Ability[]; description: string;
+  feat?: string; featNote?: string; tool?: string; kits?: StartingKit[]; source?: Source;
+}
+export interface LineageData { id: string; name: string; speciesId: string; damageType?: string; description: string; source?: Source }
+export interface SubclassData { id: string; name: string; classId: string; description: string; source?: Source }
+export interface FeatData { id: string; name: string; category: string; description: string; source?: Source }
+export interface LanguageData { id: string; name: string; rare: boolean }
 export interface Spell {
   id: string;
   name: string;
@@ -137,6 +155,12 @@ export interface Character {
   notes: Note[];
   combat: CombatState;
   creation?: CreationInfo;
+  lineageId?: string;
+  size?: Size;
+  subclassId?: string; // chosen path; the subclass itself starts at level 3
+  originFeat?: string; // feat id, with an optional note such as "Wizard"
+  originFeatNote?: string;
+  languages?: string[];
   createdAt: number;
   updatedAt: number;
 }

@@ -30,3 +30,7 @@
 .charrow:hover { background: var(--accent-100); }
 .charrow.is-on { background: var(--accent-100); }
 @media (prefers-reduced-motion: reduce) { .xpbar.is-gaining, .xpbar.is-levelup .xpbar__fill, .lvl-pop, .gain-tag { animation: none; } .xpbar__fill { transition: none; } }
+.origin-facts { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 10px 12px; background: var(--paper); border: 2px solid var(--ink); box-shadow: var(--shadow-sm); }
+.origin-facts > div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: baseline; }
+.origin-facts dt { font-size: 11px; }
+.origin-facts dd { margin: 0; font-size: 14.5px; }

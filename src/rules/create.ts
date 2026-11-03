@@ -1,7 +1,79 @@
-import type { Ability, AbilityScores, Character } from '../types';
-import { classById } from '../data';
-import { ABILITIES, abilityMod, defaultMaxHp } from './abilities';
+import type { Ability, AbilityScores, Character, Item, KitItem, Size, StartingKit } from '../types';
+import { classById, speciesById, speciesSpeed } from '../data';
+import { ABILITIES, abilityMod, defaultMaxHp, STANDARD_ARRAY } from './abilities';
 import { newCombat } from './combat';
+
+/** Fallback key ability per class, when the data has no primary ability. */
+const KEY_FALLBACK: Record<string, Ability> = {
+  barbarian: 'str', fighter: 'str', paladin: 'str', monk: 'dex', rogue: 'dex', ranger: 'dex',
+  bard: 'cha', sorcerer: 'cha', warlock: 'cha', cleric: 'wis', druid: 'wis', wizard: 'int',
+};
+/** The ability a class leans on most. */
+export const keyAbility = (classId: string): Ability => classById(classId)?.primary?.[0] ?? KEY_FALLBACK[classId] ?? 'str';
+
+/** A standard-array spread for a class: 15 in its key ability, then CON and DEX, ending 8. */
+export function suggestedScores(key: Ability): AbilityScores {
+  const order = [...new Set<Ability>([key, 'con', 'dex', 'wis', 'cha', 'int', 'str'])];
+  return Object.fromEntries(order.map((a, i) => [a, STANDARD_ARRAY[i]])) as AbilityScores;
+}
+
+/** True when the six scores are exactly the standard array in some order. */
+export function isStandardArray(s: AbilityScores): boolean {
+  return [...ABILITIES.map((a) => s[a])].sort((x, y) => y - x).join() === STANDARD_ARRAY.join();
+}
+
+/** Swaps two abilities' scores (how the standard array is reassigned). */
+export function swapScores(s: AbilityScores, a: Ability, b: Ability): AbilityScores {
+  return { ...s, [a]: s[b], [b]: s[a] };
+}
+
+/** Default +2/+1: the class key ability if the background offers it, then the best other option. */
+export function defaultBoosts(allowed: Ability[], key: Ability, base: AbilityScores): Partial<Record<Ability, number>> {
+  if (allowed.length < 2) return {};
+  const sorted = [...allowed].sort((a, b) => (a === key ? -1 : b === key ? 1 : base[b] - base[a]));
+  return { [sorted[0]]: 2, [sorted[1]]: 1 };
+}
+
+/** Background languages: Common plus two others (standard ones in the 2024 rules). */
+export const LANGUAGE_PICKS = 2;
+export function languagesValid(picked: string[]): boolean {
+  return new Set(picked).size === LANGUAGE_PICKS && !picked.includes('common');
+}
+
+/** Inventory items for the chosen starting kits. Weapons and armour start equipped. */
+export function kitItems(kits: (StartingKit | undefined)[], makeId: () => string): Item[] {
+  const out: Item[] = [];
+  for (const k of kits) for (const i of k?.items ?? []) {
+    const existing = out.find((o) => o.name === i.name && !i.armor);
+    if (existing) { existing.qty += i.qty; continue; }
+    out.push({
+      id: makeId(), name: i.name, qty: i.qty, weight: i.weight, notes: '',
+      equipped: !!(i.weaponId || i.armor), kind: i.weaponId ? 'weapon' : 'gear',
+      ...(i.weaponId ? { weaponId: i.weaponId } : {}),
+    });
+  }
+  return out;
+}
+
+/** Starting gold from the chosen kits. */
+export const kitGold = (kits: (StartingKit | undefined)[]) => kits.reduce((t, k) => t + (k?.gp ?? 0), 0);
+
+/**
+ * Armour class at level 1: the best body armour from the kit (light adds DEX, medium up to +2, heavy none),
+ * else Unarmored Defense for barbarians (CON) and monks (WIS), else 10 + DEX. A shield adds +2 except for monks.
+ */
+export function startingArmorClass(classId: string, scores: AbilityScores, items: KitItem[]): number {
+  const dex = abilityMod(scores.dex);
+  const body = items.filter((i) => i.armor && i.armor.category !== 'shield').map((i) => {
+    const a = i.armor!;
+    return a.category === 'heavy' ? a.ac : a.category === 'medium' ? a.ac + Math.min(2, dex) : a.ac + dex;
+  });
+  const shield = classId !== 'monk' && items.some((i) => i.armor?.category === 'shield') ? 2 : 0;
+  if (body.length) return Math.max(...body) + shield;
+  if (classId === 'barbarian') return 10 + dex + abilityMod(scores.con) + shield;
+  if (classId === 'monk') return 10 + dex + abilityMod(scores.wis);
+  return 10 + dex + shield;
+}
 
 export interface NewCharacterInput {
   id: string;
@@ -14,6 +86,15 @@ export interface NewCharacterInput {
   classSkills: string[];
   backgroundSkills: string[];
   now: number;
+  method?: 'standard' | 'pointbuy';
+  lineageId?: string;
+  size?: Size;
+  subclassId?: string;
+  originFeat?: string;
+  originFeatNote?: string;
+  languages?: string[]; // picked besides Common
+  kits?: (StartingKit | undefined)[]; // class kit, background kit
+  makeId?: () => string;
 }
 
 /** Final scores: base plus background increases, capped at 20. */
@@ -28,10 +109,13 @@ export function boostsValid(boosts: Partial<Record<Ability, number>>, allowed: A
   return total === 3 && entries.every(([a, v]) => v <= 2 && allowed.includes(a));
 }
 
-/** Builds a new level-1 character. AC starts at 10 + DEX (no armour). */
+/** Builds a new level-1 character, with the chosen starting kits in the pack. */
 export function buildCharacter(i: NewCharacterInput): Character {
   const cls = classById(i.classId);
   const abilities = applyBoosts(i.base, i.boosts);
+  const kits = i.kits ?? [];
+  let n = 0;
+  const makeId = i.makeId ?? (() => `${i.id}-k${n++}`);
   const hitDie = cls?.hitDie ?? 8;
   const maxHp = defaultMaxHp(hitDie, 1, abilities.con);
   return {
@@ -44,7 +128,7 @@ export function buildCharacter(i: NewCharacterInput): Character {
     abilities,
     skills: [...new Set([...i.backgroundSkills, ...i.classSkills])],
     expertise: [],
-    armorClass: 10 + abilityMod(abilities.dex),
+    armorClass: startingArmorClass(i.classId, abilities, kits.flatMap((k) => k?.items ?? [])),
     hp: { max: maxHp, current: maxHp, temp: 0 },
     hitDiceUsed: 0,
     deathSaves: { successes: 0, failures: 0 },
@@ -53,14 +137,21 @@ export function buildCharacter(i: NewCharacterInput): Character {
     spellSlotsUsed: Array(9).fill(0),
     spells: [],
     concentration: null,
-    inventory: [],
-    currency: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
+    inventory: kitItems(kits, makeId),
+    currency: { cp: 0, sp: 0, ep: 0, gp: kitGold(kits), pp: 0 },
     rollLog: [],
     xp: 0,
     inspiration: false,
     notes: [],
     combat: newCombat(),
-    creation: { method: 'pointbuy', base: i.base, boosts: i.boosts, hpAuto: true },
+    creation: { method: i.method ?? 'pointbuy', base: i.base, boosts: i.boosts, hpAuto: true },
+    ...(i.lineageId ? { lineageId: i.lineageId } : {}),
+    ...(speciesSpeed(i.speciesId, i.lineageId) !== speciesById(i.speciesId)?.speed ? { speedOverride: speciesSpeed(i.speciesId, i.lineageId) } : {}),
+    ...(i.size ? { size: i.size } : {}),
+    ...(i.subclassId ? { subclassId: i.subclassId } : {}),
+    ...(i.originFeat ? { originFeat: i.originFeat } : {}),
+    ...(i.originFeatNote ? { originFeatNote: i.originFeatNote } : {}),
+    languages: ['common', ...(i.languages ?? []).filter((l) => l !== 'common')],
     createdAt: i.now,
     updatedAt: i.now,
   };

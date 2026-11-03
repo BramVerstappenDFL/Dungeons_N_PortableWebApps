@@ -100,10 +100,71 @@ const classes = load('classes').map((c) => {
   };
 });
 
-const species = load('species').map((s) => ({
-  id: short(s.id), name: t(s.id, 'name'), speed: s.fields.speed, size: s.fields.size,
-  description: t(s.id, 'description') ?? '',
+// Names and weights for every item a starting kit can hand out.
+const itemIndex = {};
+for (const folder of ['gear', 'weapons', 'armor', 'tools']) {
+  for (const it of load(folder)) itemIndex[it.id] = { name: t(it.id, 'name'), weight: it.fields?.weight ?? 0, kind: folder, armor: folder === 'armor' ? { category: it.fields.category, ac: it.fields.baseAc } : undefined };
+}
+/** Starting-kit options (A, B, C) from an item's `kit` action. */
+function kitsOf(entry) {
+  const step = (entry.actions || []).find((a) => a.id === 'kit')?.steps?.[0];
+  if (!step) return [];
+  return step.options.map((o) => {
+    const items = [];
+    let gp = 0;
+    for (const ch of o.changes || []) {
+      if (ch.type === 'adjust' && ch.field === 'coins.gp') gp += ch.by;
+      if (ch.type !== 'addItem') continue;
+      const ref = String(ch.entry.item).replace(/'/g, '');
+      const info = itemIndex[ref];
+      if (!info) continue;
+      const item = { name: info.name, qty: ch.entry.quantity ?? 1, weight: info.weight };
+      if (info.kind === 'weapons') item.weaponId = short(ref);
+      if (info.armor) item.armor = info.armor;
+      items.push(item);
+    }
+    return { id: o.id, items, gp };
+  });
+}
+
+const ABILITY_WORDS = { Strength: 'str', Dexterity: 'dex', Constitution: 'con', Intelligence: 'int', Wisdom: 'wis', Charisma: 'cha' };
+for (const c of classes) {
+  const raw = load('classes').find((x) => short(x.id) === c.id);
+  const m = /Primary Ability \| ([^|]+)/.exec(t(raw.id, 'description') ?? '');
+  c.primary = m ? m[1].trim().split(/ and | or /).map((w) => ABILITY_WORDS[w.trim()]).filter(Boolean) : [];
+  c.kits = kitsOf(raw);
+}
+
+const traitOf = (id) => ({ id: short(id), name: t(id, 'name'), description: t(id, 'description') ?? '' });
+const species = load('species').map((s) => {
+  const traits = (s.grants || []).map((g) => g.item).filter((i) => i?.startsWith('traits.')).map(traitOf);
+  const sizeChoice = (s.choices || []).find((c) => c.id === 'size');
+  return {
+    id: short(s.id), name: t(s.id, 'name'), speed: s.fields.speed,
+    size: s.fields.size === 'choice' ? 'medium' : s.fields.size,
+    sizes: sizeChoice ? sizeChoice.from.options.map((o) => o.id) : [s.fields.size],
+    lineage: (s.choices || []).some((c) => c.id === 'lineage'),
+    traits,
+    description: t(s.id, 'description') ?? '',
+  };
+});
+
+const lineages = load('lineages').map((l) => ({
+  id: short(l.id), name: t(l.id, 'name'), speciesId: short(l.fields.species),
+  ...(l.fields.damageType ? { damageType: l.fields.damageType } : {}),
+  description: t(l.id, 'description') ?? '',
+})).sort((a, b) => a.name.localeCompare(b.name));
+
+const subclasses = load('subclasses').map((s) => ({
+  id: short(s.id), name: t(s.id, 'name'), classId: short(s.fields.class), description: t(s.id, 'description') ?? '',
 }));
+
+const feats = load('feats').map((f) => ({
+  id: short(f.id), name: t(f.id, 'name'), category: f.fields?.category ?? 'general', description: t(f.id, 'description') ?? '',
+})).sort((a, b) => a.name.localeCompare(b.name));
+
+const languages = load('languages').map((l) => ({ id: short(l.id), name: t(l.id, 'name'), rare: !!l.fields?.rare }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 const backgrounds = load('backgrounds').map((b) => {
   const skills = (b.effects || [])
@@ -111,7 +172,17 @@ const backgrounds = load('backgrounds').map((b) => {
     .map((e) => e.value.tag.replace('skill.', ''));
   const inc = (b.choices || []).find((c) => c.id === 'ability-increase');
   const abilities = inc?.from?.options?.[0]?.choices?.[0]?.from?.values ?? [];
-  return { id: short(b.id), name: t(b.id, 'name'), skills, abilities, description: t(b.id, 'description') ?? '' };
+  const featGrant = (b.grants || []).find((g) => g.item?.startsWith('feats.'));
+  const featOption = featGrant?.choices?.list?.[0]?.option;
+  const tool = (b.effects || []).find((e) => e.target === 'proficiencies.tools')?.value?.item;
+  return {
+    id: short(b.id), name: t(b.id, 'name'), skills, abilities,
+    feat: featGrant ? short(featGrant.item) : undefined,
+    featNote: featOption ? featOption.charAt(0).toUpperCase() + featOption.slice(1) : undefined,
+    tool: tool ? itemIndex[tool]?.name : undefined,
+    kits: kitsOf(b),
+    description: t(b.id, 'description') ?? '',
+  };
 });
 
 const weapons = load('weapons').map((w) => {
@@ -134,4 +205,8 @@ write('classes.json', classes);
 write('species.json', species);
 write('backgrounds.json', backgrounds);
 write('weapons.json', weapons);
-console.log(`spells: ${spells.length}, classes: ${classes.length}, species: ${species.length}, backgrounds: ${backgrounds.length}, weapons: ${weapons.length}`);
+write('lineages.json', lineages);
+write('subclasses.json', subclasses);
+write('feats.json', feats);
+write('languages.json', languages);
+console.log(`spells: ${spells.length}, classes: ${classes.length}, species: ${species.length}, backgrounds: ${backgrounds.length}, weapons: ${weapons.length}, lineages: ${lineages.length}, subclasses: ${subclasses.length}, feats: ${feats.length}, languages: ${languages.length}`);
