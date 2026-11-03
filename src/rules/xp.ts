@@ -25,13 +25,14 @@ export const hpPerLevel = (hitDie: number, con: number) => Math.max(1, hitDie / 
 
 /**
  * Adds experience. When the total crosses a level threshold the level rises (never falls),
- * and max and current HP each grow by the fixed average per level gained.
+ * and max and current HP each grow by the fixed average per level gained, plus any per-level bonus
+ * (Dwarven Toughness, Tough).
  */
-export function applyXp(c: Character, amount: number, hitDie: number): { character: Character; levelsGained: number } {
+export function applyXp(c: Character, amount: number, hitDie: number, bonusPerLevel = 0): { character: Character; levelsGained: number } {
   const xp = Math.max(0, c.xp + Math.max(0, Math.floor(amount)));
   const level = Math.max(c.level, levelForXp(xp));
   const levelsGained = level - c.level;
-  const gain = levelsGained * hpPerLevel(hitDie, c.abilities.con);
+  const gain = levelsGained * (hpPerLevel(hitDie, c.abilities.con) + bonusPerLevel);
   return {
     character: { ...c, xp, level, hp: { ...c.hp, max: c.hp.max + gain, current: c.hp.current + gain } },
     levelsGained,

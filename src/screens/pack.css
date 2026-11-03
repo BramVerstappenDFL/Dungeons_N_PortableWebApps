@@ -17,3 +17,5 @@
 .itemname { font: inherit; font-weight: 700; color: var(--ink); background: none; border: 0; padding: 0; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .itemname:hover { text-decoration: underline; }
 .gr-select { appearance: auto; }
+.ac-tag { animation: pop-in .3s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .ac-tag { animation: none; } }

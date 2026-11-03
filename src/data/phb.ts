@@ -1,6 +1,6 @@
 // Player's Handbook (2024) entries that are not in the SRD.
 // Hand-maintained. Names and game mechanics only: no rules or flavour text from the book.
-import type { BackgroundData, FeatData, SpeciesData, SubclassData } from '../types';
+import type { BackgroundData, FeatData, SpeciesData, SubclassData, TraitData } from '../types';
 
 const SRC = 'PHB 2024' as const;
 const gold = [{ id: 'b', items: [], gp: 50 }];
@@ -23,11 +23,17 @@ export const PHB_BACKGROUNDS: BackgroundData[] = [
   bg('wayfarer', 'Wayfarer', ['dex', 'wis', 'cha'], ['insight', 'stealth'], 'lucky', "Thieves' Tools"),
 ];
 
-const trait = (name: string) => ({ id: name.toLowerCase().replace(/\s+/g, '-'), name, description: '' });
+const trait = (name: string): TraitData => ({ id: name.toLowerCase().replace(/\s+/g, '-'), name, description: '' });
 export const PHB_SPECIES: SpeciesData[] = [
   {
     id: 'aasimar', name: 'Aasimar', speed: 30, size: 'medium', sizes: ['medium', 'small'], lineage: false, description: '', source: SRC,
-    traits: ['Celestial Resistance', 'Darkvision', 'Healing Hands', 'Light Bearer', 'Celestial Revelation'].map(trait),
+    traits: [
+      { ...trait('Celestial Resistance'), resistances: ['necrotic', 'radiant'] },
+      { ...trait('Darkvision'), darkvision: 60 },
+      trait('Healing Hands'),
+      { ...trait('Light Bearer'), spells: [{ id: 'light', minLevel: 1 }] },
+      trait('Celestial Revelation'),
+    ],
   },
 ];
 

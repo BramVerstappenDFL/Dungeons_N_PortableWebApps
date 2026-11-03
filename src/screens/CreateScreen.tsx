@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Ability, AbilityScores, Size } from '../types';
 import {
-  BACKGROUNDS, CLASSES, SPECIES, STANDARD_LANGUAGES, backgroundById, classById, featById, languageById,
+  BACKGROUNDS, CLASSES, FEATS, SPECIES, STANDARD_LANGUAGES, backgroundById, classById, featById, languageById,
   lineageById, lineagesFor, originName, speciesById, speciesSpeed, subclassById, subclassesFor,
 } from '../data';
 import { uid, useStore } from '../store/characters';
 import {
-  ABILITIES, ABILITY_NAMES, POINT_BUY_BUDGET, POINT_BUY_COST, abilityMod, defaultMaxHp, pointBuySpent, skillName,
+  ABILITIES, ABILITY_NAMES, SKILLS, POINT_BUY_BUDGET, POINT_BUY_COST, abilityMod, defaultMaxHp, pointBuySpent, skillName,
 } from '../rules/abilities';
 import {
   LANGUAGE_PICKS, applyBoosts, boostsValid, buildCharacter, defaultBoosts, isStandardArray, keyAbility,
@@ -17,6 +17,10 @@ import { Icon } from '../ui/Icon';
 import { cap, signed, excerpt } from '../ui/format';
 import { reducedMotion } from '../ui/theme';
 import { KitPicker, OriginRow, SealProgress, SourceTag, Tick, WaxSeal } from './create/parts';
+import { FeatChoices, MI_LISTS, SKILLED_PICKS, miAbility, miComplete, type FeatInstance, type FeatSlot, type MiPick } from './create/FeatChoices';
+import { originAbilityOf, originOf } from '../rules/origin';
+import { useSpells } from '../ui/useSpells';
+import type { CharacterSpell } from '../types';
 import './create.css';
 
 const STEPS = ['Origin', 'Background', 'Class', 'Abilities', 'Gear & tongues', 'Review'];
@@ -50,6 +54,14 @@ export function CreateScreen() {
   const [classKit, setClassKit] = useState('a');
   const [bgKit, setBgKit] = useState('a');
   const [languages, setLanguages] = useState<string[]>([]);
+  const [keenSenses, setKeenSenses] = useState<string | undefined>();
+  const [skillful, setSkillful] = useState<string | undefined>();
+  const [extraFeat, setExtraFeat] = useState<string | undefined>();
+  const [extraFeatNote, setExtraFeatNote] = useState<string | undefined>();
+  const [originAbility, setOriginAbility] = useState<Ability | undefined>();
+  const [skilled, setSkilled] = useState<string[]>([]);
+  const [mi, setMiState] = useState<Partial<Record<FeatSlot, MiPick>>>({});
+  const spells = useSpells();
 
   const cls = classById(classId)!;
   const bg = backgroundById(backgroundId)!;
@@ -59,7 +71,20 @@ export function CreateScreen() {
   const effBoosts = boosts ?? defaultBoosts(bg.abilities, key, scores);
   const final = applyBoosts(scores, effBoosts);
   const left = POINT_BUY_BUDGET - pointBuySpent(scores);
-  const skillPool = (cls.skillOptions ?? []).filter((s) => !bg.skills.includes(s));
+  const isHuman = speciesId === 'human';
+  const featList: FeatInstance[] = [
+    ...(bg.feat ? [{ slot: 'bg' as const, id: bg.feat, note: bg.featNote }] : []),
+    ...(isHuman && extraFeat ? [{ slot: 'extra' as const, id: extraFeat, note: extraFeatNote }] : []),
+  ];
+  const originSkills = [speciesId === 'elf' ? keenSenses : undefined, isHuman ? skillful : undefined].filter((s): s is string => !!s);
+  const skilledNeeded = featList.filter((f) => f.id === 'skilled').length * SKILLED_PICKS;
+  const skilledPicks = skilled.slice(0, skilledNeeded);
+  const grantsSpells = !!lineage?.abilityChoice || (species.traits ?? []).some((t) => t.spells?.length);
+  const featSpells: CharacterSpell[] = featList.filter((f) => f.id === 'magic-initiate').flatMap((f) => {
+    const p = mi[f.slot];
+    return p ? [...p.cantrips, ...(p.spell ? [p.spell] : [])].map((id) => ({ id, prepared: true, source: 'feat' as const, ability: p.ability })) : [];
+  });
+  const skillPool = (cls.skillOptions ?? SKILLS.map((s) => s.id)).filter((s) => !bg.skills.includes(s) && !originSkills.includes(s) && !skilledPicks.includes(s));
   const skillsOk = classSkills.length === Math.min(cls.skillCount, skillPool.length);
   const clsKits = cls.kits ?? [];
   const bgKits = bg.kits ?? [];
@@ -76,8 +101,9 @@ export function CreateScreen() {
 
   const scoresOk = method === 'standard' ? isStandardArray(scores) : left >= 0;
   const valid = [
-    !!name.trim() && (!species.lineage || !!lineage),
-    true,
+    !!name.trim() && (!species.lineage || !!lineage) && (speciesId !== 'elf' || !!keenSenses)
+      && (!isHuman || (!!skillful && !!extraFeat && (extraFeat !== 'magic-initiate' || !!extraFeatNote))),
+    skilledPicks.length === skilledNeeded && featList.filter((f) => f.id === 'magic-initiate').every((f) => miComplete(mi[f.slot])),
     skillsOk,
     scoresOk && boostsValid(effBoosts, bg.abilities),
     languagesValid(languages),
@@ -94,6 +120,10 @@ export function CreateScreen() {
     const s = speciesById(id)!;
     setSpeciesId(id);
     setLineageId(undefined);
+    setKeenSenses(undefined);
+    setSkillful(undefined);
+    setExtraFeat(undefined);
+    setOriginAbility(undefined);
     setSize(s.sizes?.includes('medium') ? 'medium' : (s.sizes?.[0] ?? 'medium'));
   };
   const pickBackground = (id: string) => {
@@ -102,6 +132,8 @@ export function CreateScreen() {
     setBoosts(null);
     setBgKit(b.kits?.[0]?.id ?? 'a');
     setClassSkills((l) => l.filter((x) => !b.skills.includes(x)));
+    setSkilled((l) => l.filter((x) => !b.skills.includes(x)));
+    setMiState((m) => ({ extra: m.extra }));
   };
   const pickClass = (id: string) => {
     if (id === classId) return;
@@ -147,13 +179,22 @@ export function CreateScreen() {
   };
   const spread = () => setBoosts(Object.fromEntries(bg.abilities.map((a) => [a, 1])));
 
+  const setMi = (slot: FeatSlot, p: MiPick) => setMiState((m) => ({ ...m, [slot]: p }));
+  const input = (id: string, makeId?: () => string) => ({
+    id, name, speciesId, backgroundId, classId, base: scores, boosts: effBoosts,
+    classSkills, backgroundSkills: bg.skills, now: Date.now(), method,
+    lineageId, size: (species.sizes?.length ?? 0) > 1 ? size : undefined, subclassId,
+    originFeat: bg.feat, originFeatNote: bg.featNote, languages, kits: chosenKits, makeId,
+    originAbility: grantsSpells ? originAbilityOf(final, originAbility) : undefined,
+    extraFeat: isHuman ? extraFeat : undefined, extraFeatNote: isHuman ? extraFeatNote : undefined,
+    originPicks: { keenSenses: originSkills.includes(keenSenses ?? '') ? keenSenses : undefined, skillful: isHuman ? skillful : undefined, skilled: skilledPicks },
+    featSpells,
+  });
+  // The review shows the character exactly as it will be saved.
+  const preview = step === STEPS.length - 1 ? buildCharacter(input('preview')) : null;
+  const previewOrigin = preview ? originOf(preview) : null;
   const create = () => {
-    const c = buildCharacter({
-      id: uid(), name, speciesId, backgroundId, classId, base: scores, boosts: effBoosts,
-      classSkills, backgroundSkills: bg.skills, now: Date.now(), method,
-      lineageId, size: (species.sizes?.length ?? 0) > 1 ? size : undefined, subclassId,
-      originFeat: bg.feat, originFeatNote: bg.featNote, languages, kits: chosenKits, makeId: uid,
-    });
+    const c = buildCharacter(input(uid(), uid));
     const finish = () => { add(c); nav('/', { replace: true }); };
     if (reducedMotion()) return finish();
     setSealing(true);
@@ -235,6 +276,61 @@ export function CreateScreen() {
                             : <span className="muted">Pick one to continue.</span>}
                         </div>
                       )}
+                      {s.id === 'elf' && (
+                        <div className="col" style={{ gap: 6 }}>
+                          <span className="gr-label">Keen Senses</span>
+                          <div className="chips" role="radiogroup" aria-label="Keen Senses skill">
+                            {['insight', 'perception', 'survival'].map((k) => (
+                              <button key={k} role="radio" aria-checked={keenSenses === k} className={`gr-chip filter${keenSenses === k ? ' is-on' : ''}`} onClick={() => setKeenSenses(k)}>{skillName(k)}</button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {s.id === 'human' && (
+                        <>
+                          <div className="col" style={{ gap: 6 }}>
+                            <span className="gr-label">Skillful: one more skill</span>
+                            <div className="chips" role="radiogroup" aria-label="Skillful skill">
+                              {SKILLS.filter((k) => !bg.skills.includes(k.id)).map((k) => (
+                                <button key={k.id} role="radio" aria-checked={skillful === k.id} className={`gr-chip filter${skillful === k.id ? ' is-on' : ''}`} onClick={() => setSkillful(k.id)}>{k.name}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="col" style={{ gap: 6 }}>
+                            <span className="gr-label">Versatile: an origin feat</span>
+                            <div className="chips" role="radiogroup" aria-label="Versatile feat">
+                              {FEATS.filter((f) => f.category === 'origin').map((f) => (
+                                <button key={f.id} role="radio" aria-checked={extraFeat === f.id} className={`gr-chip filter${extraFeat === f.id ? ' is-on' : ''}`}
+                                  onClick={() => { setExtraFeat(f.id); setExtraFeatNote(undefined); setMiState((m) => ({ bg: m.bg })); }}>
+                                  {f.name}<SourceTag source={f.source} />
+                                </button>
+                              ))}
+                            </div>
+                            {extraFeat === 'magic-initiate' && (
+                              <div className="seg fade-up" role="group" aria-label="Spell list">
+                                {MI_LISTS.map((l) => (
+                                  <button key={l} className={extraFeatNote === l ? 'segbtn is-on' : 'segbtn'} aria-pressed={extraFeatNote === l}
+                                    onClick={() => { setExtraFeatNote(l); setMiState((m) => ({ bg: m.bg, extra: { cantrips: [], ability: miAbility(l) } })); }}>{l}</button>
+                                ))}
+                              </div>
+                            )}
+                            {extraFeat && featById(extraFeat)?.description && (
+                              <span key={extraFeat} className="muted fade-up">{excerpt(featById(extraFeat)!.description.replace(/^Origin Feat\s*/, ''), 160)}</span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                      {(s.id === speciesId && ((lineage?.abilityChoice) || (s.traits ?? []).some((t) => t.spells?.length))) && (
+                        <div className="col fade-up" style={{ gap: 6 }}>
+                          <span className="gr-label">Spellcasting ability for {s.name.toLowerCase()} spells</span>
+                          <div className="seg" role="group" aria-label="Spellcasting ability">
+                            {(['int', 'wis', 'cha'] as Ability[]).map((a) => {
+                              const on = originAbilityOf(final, originAbility) === a;
+                              return <button key={a} className={on ? 'segbtn is-on' : 'segbtn'} aria-pressed={on} onClick={() => setOriginAbility(a)}>{ABILITY_NAMES[a]}</button>;
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {s.source === 'PHB 2024' && <span className="muted">Traits are listed by name; see the Player's Handbook for the rules.</span>}
                     </OriginRow>
                   ))}
@@ -269,6 +365,8 @@ export function CreateScreen() {
                   </OriginRow>
                 ))}
               </div>
+              <FeatChoices feats={featList} spells={spells} taken={[...bg.skills, ...originSkills]}
+                skilled={skilledPicks} setSkilled={setSkilled} mi={mi} setMi={setMi} />
             </>
           )}
 
@@ -437,7 +535,7 @@ export function CreateScreen() {
                     Level 1 · {originName(speciesId, lineageId)} {cls.name.toLowerCase()} · {bg.name}
                   </span>
                   <div className="grid3">
-                    {([['HP', hp, false], ['AC', ac, false], ['Init', dexMod, true]] as const).map(([k, v, sign], i) => (
+                    {([['HP', preview?.hp.max ?? hp, false], ['AC', preview?.armorClass ?? ac, false], ['Init', dexMod + (previewOrigin?.initiativeBonus ?? 0), true]] as const).map(([k, v, sign], i) => (
                       <div key={k} className="stat flip" style={{ background: 'var(--bg)', '--i': i } as CSSProperties}>
                         <span className="gr-label">{k}</span><ReviewNumber value={v} sign={sign} />
                       </div>
@@ -455,10 +553,15 @@ export function CreateScreen() {
                   <dl className="ledger">
                     {[
                       ['Origin', `${originName(speciesId, lineageId)} · ${(species.sizes?.length ?? 0) > 1 ? cap(size) : cap(species.size)} · ${speed} ft`],
-                      ['Feat', `${feat?.name ?? cap(bg.feat ?? '')}${bg.featNote ? ` (${bg.featNote})` : ''}`],
+                      ['Feats', (previewOrigin?.feats ?? []).map((f) => `${f.name}${f.note ? ` (${f.note})` : ''}`).join(', ') || (feat?.name ?? '')],
                       ['Path', subclassId ? `${subclassById(subclassId)?.name} at level 3` : 'Chosen at level 3'],
-                      ['Skills', [...new Set([...bg.skills, ...classSkills])].map(skillName).join(', ')],
+                      ['Skills', (preview?.skills ?? []).map(skillName).join(', ')],
                       ['Saves', cls.saves.map(cap).join(', ')],
+                      ...(previewOrigin?.darkvision ? [['Senses', `Darkvision ${previewOrigin.darkvision} ft`]] : []),
+                      ...(previewOrigin?.resistances.length ? [['Resists', previewOrigin.resistances.map(cap).join(', ')]] : []),
+                      ...(preview?.tools?.length ? [['Tools', preview.tools.join(', ')]] : []),
+                      ...(preview && spells && (featSpells.length || previewOrigin?.grantedSpells.length)
+                        ? [['Spells', [...featSpells, ...previewOrigin!.grantedSpells].map((s) => spells.find((x) => x.id === s.id)?.name ?? s.id).join(', ')]] : []),
                       ['Tongues', ['Common', ...languages.map((l) => languageById(l)?.name ?? l)].join(', ')],
                       ['Pack', `${chosenKits.reduce((n, k) => n + (k?.items.length ?? 0), 0)} items · ${kitGold(chosenKits)} GP`],
                     ].map(([k, v], i) => (
@@ -469,7 +572,7 @@ export function CreateScreen() {
               </section>
               <div className="gr-notice gr-ok rise" style={{ '--i': 14 } as CSSProperties}>
                 <Icon name="check" />
-                <span><b>Ready for the table</b>HP starts at {hp} ({cls.hitDie} {signed(conMod)} CON). Spells can be added from the sheet.</span>
+                <span><b>Ready for the table</b>HP starts at {preview?.hp.max ?? hp} ({cls.hitDie} {signed(conMod)} CON{(previewOrigin?.hpPerLevel ?? 0) > 0 ? ` + ${previewOrigin!.hpPerLevel} from your origin` : ''}). More spells can be added from the sheet.</span>
               </div>
             </>
           )}

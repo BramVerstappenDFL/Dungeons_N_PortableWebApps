@@ -1,5 +1,5 @@
 import type {
-  BackgroundData, ClassData, FeatData, LanguageData, LineageData, SpeciesData, Spell, SubclassData, WeaponData,
+  ArmorInfo,  BackgroundData, ClassData, FeatData, LanguageData, LineageData, SpeciesData, Spell, SubclassData, WeaponData,
 } from '../types';
 import classesJson from './classes.json';
 import speciesJson from './species.json';
@@ -9,6 +9,7 @@ import lineagesJson from './lineages.json';
 import subclassesJson from './subclasses.json';
 import featsJson from './feats.json';
 import languagesJson from './languages.json';
+import armorJson from './armor.json';
 import { PHB_BACKGROUNDS, PHB_FEATS, PHB_SPECIES, PHB_SUBCLASSES } from './phb';
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
@@ -22,6 +23,8 @@ export const LINEAGES = srd(lineagesJson as LineageData[]);
 export const SUBCLASSES = [...srd(subclassesJson as SubclassData[]), ...PHB_SUBCLASSES].sort(byName);
 export const FEATS = [...srd(featsJson as FeatData[]), ...PHB_FEATS].sort(byName);
 export const LANGUAGES = languagesJson as LanguageData[];
+export const ARMOR = armorJson as (ArmorInfo & { id: string; name: string; weight: number })[];
+export const armorByName = (name: string) => ARMOR.find((a) => a.name.toLowerCase() === name.trim().toLowerCase());
 export const STANDARD_LANGUAGES = LANGUAGES.filter((l) => !l.rare && l.id !== 'common');
 
 export const classById = (id: string) => CLASSES.find((c) => c.id === id);
@@ -41,7 +44,7 @@ export function originName(speciesId: string, lineageId?: string): string {
 }
 /** Walking speed, including a lineage that changes it (Wood Elf: 35 ft). */
 export const speciesSpeed = (speciesId: string, lineageId?: string) =>
-  lineageId === 'wood-elf' ? 35 : (speciesById(speciesId)?.speed ?? 30);
+  (speciesById(speciesId)?.speed ?? 30) + (lineageById(lineageId)?.speedBonus ?? 0);
 export const lineagesFor = (speciesId: string) => LINEAGES.filter((l) => l.speciesId === speciesId);
 export const subclassesFor = (classId: string) => SUBCLASSES.filter((s) => s.classId === classId);
 

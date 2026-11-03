@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Ability, Character } from '../types';
-import { backgroundById, featById, languageById, originName, subclassById, weaponById } from '../data';
+import { backgroundById, languageById, originName, subclassById, weaponById } from '../data';
+import { allSpells, castingFor, hasFreeCast } from '../rules/origin';
+import { FeaturesWindow } from './FeaturesWindow';
 import { useStore } from '../store/characters';
 import { derive } from '../rules/derived';
 import { ABILITIES } from '../rules/abilities';
@@ -61,10 +63,10 @@ export function SheetScreen({ c }: { c: Character }) {
   const addXp = (amount: number) => {
     if (!(amount > 0) || !d.cls) return;
     const from = c.xp, to = from + amount;
-    const { levelsGained } = applyXp(c, amount, d.hitDie);
+    const { levelsGained } = applyXp(c, amount, d.hitDie, d.origin.hpPerLevel);
     const leveled = levelsGained > 0;
     timers.current.forEach(clearTimeout); timers.current = [];
-    set((x) => applyXp(x, amount, d.hitDie).character);
+    set((x) => applyXp(x, amount, d.hitDie, d.origin.hpPerLevel).character);
     setSheet(null); setDraft('');
     if (reducedMotion()) {
       setShownXp(to); setLevelUp(leveled);
@@ -125,26 +127,28 @@ export function SheetScreen({ c }: { c: Character }) {
   const known = useMemo(() => {
     if (!spells) return [];
     const byId = new Map(spells.map((s) => [s.id, s]));
-    return c.spells
+    return allSpells(c)
       .map((cs) => ({ cs, s: byId.get(cs.id)! }))
       .filter((x) => x.s && (x.s.level === 0 || x.cs.prepared))
       .sort((a, b) => a.s.level - b.s.level || a.s.name.localeCompare(b.s.name));
-  }, [spells, c.spells]);
+  }, [spells, c]);
   const levelsKnown = [...new Set(known.map((k) => k.s.level))];
   const spellCards: CardItem[] = known
     .filter((k) => levelFilter === null || k.s.level === levelFilter)
-    .map(({ s }) => {
-      const rolls = spellRolls(s, Math.max(1, s.level), c.level, d.spellMod);
+    .map(({ s, cs }) => {
+      const cast = castingFor(c, cs, d.spellAbility);
+      const rolls = spellRolls(s, Math.max(1, s.level), c.level, cast.mod);
       const effect = rolls[0] ? prettyExpr(rolls[0].expression) + (s.damageType ? ` ${s.damageType}` : '') : s.save ? `${s.save.toUpperCase()} save` : '—';
       return {
         key: s.id, name: s.name, level: s.level, kind: cap(s.school), tint: SCHOOL_TINT[s.school],
         short: `${ordinal(s.level)} · ${s.range}`,
-        facts: [['Level', ordinal(s.level)], ['Casting time', s.castingTime], ['Range', s.range], ['Duration', s.duration], ['Effect', effect]],
+        facts: [['Level', ordinal(s.level)], ['Casting time', s.castingTime], ['Range', s.range], [cs.source ? 'Ability' : 'Duration', cs.source ? `${cast.ability.toUpperCase()} · DC ${cast.dc}` : s.duration], ['Effect', effect]],
         text: excerpt(s.description),
         foot: (
           <div className="gr-card__foot">
             <span className="gr-chip gr-chip--buff"><Icon name="check" />{s.level === 0 ? 'Known' : 'Prepared'}</span>
-            <span className="gr-tag">{s.level === 0 ? 'At will' : `Slot ${ordinal(s.level)}`}</span>
+            {cs.source && <span className="gr-tag gr-tag--gilt">{cs.source === 'lineage' ? 'Lineage' : 'Feat'}</span>}
+            <span className="gr-tag">{s.level === 0 ? 'At will' : cs.source && hasFreeCast(c, cs) ? 'Free cast ready' : `Slot ${ordinal(s.level)}`}</span>
             {s.concentration && <span className="gr-tag">Concentration</span>}
           </div>
         ),
@@ -152,7 +156,8 @@ export function SheetScreen({ c }: { c: Character }) {
     });
   const cards = tab === 'weapons' ? weaponCards : spellCards;
   const acc = useAccordion(mainRef, cards.length);
-  const isCaster = d.slotsMax.some((n) => n > 0) || c.spells.length > 0;
+  const hasSlots = d.slotsMax.some((n) => n > 0) || c.spells.some((s) => !s.source);
+  const isCaster = hasSlots || known.length > 0;
 
   const bg = backgroundById(c.backgroundId);
   const subtitle = [`Level ${shownLvl}`, [d.species ? originName(c.speciesId, c.lineageId) : undefined, d.cls?.name.toLowerCase()].filter(Boolean).join(' '), bg?.name].filter(Boolean).join(' · ');
@@ -234,8 +239,8 @@ export function SheetScreen({ c }: { c: Character }) {
         </section>
 
         <div className="grid4">
-          <button className="stat stat--shadow" onClick={() => setSheet('ac')} aria-label={`Armor class ${c.armorClass}. Change`}>
-            <span className="gr-label">AC</span><span className="num">{c.armorClass}</span>
+          <button className="stat stat--shadow" onClick={() => setSheet('ac')} aria-label={`Armor class ${d.ac}. Change`}>
+            <span className="gr-label">AC</span><span className="num">{d.ac}</span>
           </button>
           <div className="stat stat--shadow"><span className="gr-label">Init</span><span className="num">{signed(d.initiative)}</span></div>
           <div className="stat stat--shadow"><span className="gr-label">Speed</span><span className="num">{d.speed}</span></div>
@@ -271,16 +276,19 @@ export function SheetScreen({ c }: { c: Character }) {
           <span className="muted">Gold pips mark proficient saving throws.</span>
         </section>
 
-        {(c.originFeat || c.subclassId || (c.languages?.length ?? 0) > 0) && (
-          <dl className="origin-facts">
-            {c.originFeat && <div><dt className="gr-label">Feat</dt><dd>{featById(c.originFeat)?.name ?? c.originFeat}{c.originFeatNote ? ` (${c.originFeatNote})` : ''}</dd></div>}
-            {c.subclassId && <div><dt className="gr-label">Path</dt><dd>{subclassById(c.subclassId)?.name}{c.level < 3 ? ' (from level 3)' : ''}</dd></div>}
-            {(c.languages?.length ?? 0) > 0 && <div><dt className="gr-label">Tongues</dt><dd>{c.languages!.map((l) => languageById(l)?.name ?? l).join(', ')}</dd></div>}
-          </dl>
-        )}
+        <dl className="origin-facts">
+          {d.origin.feats.length > 0 && <div><dt className="gr-label">Feats</dt><dd>{d.origin.feats.map((f) => `${f.name}${f.note ? ` (${f.note})` : ''}`).join(', ')}</dd></div>}
+          {c.subclassId && <div><dt className="gr-label">Path</dt><dd>{subclassById(c.subclassId)?.name}{c.level < 3 ? ' (from level 3)' : ''}</dd></div>}
+          <div><dt className="gr-label">Size</dt><dd>{cap(d.origin.size)}{d.origin.darkvision ? ` · Darkvision ${d.origin.darkvision} ft` : ''} · Passive Perception {d.passivePerception}</dd></div>
+          {d.origin.resistances.length > 0 && <div><dt className="gr-label">Resists</dt><dd>{d.origin.resistances.map(cap).join(', ')}</dd></div>}
+          {d.origin.tools.length > 0 && <div><dt className="gr-label">Tools</dt><dd>{d.origin.tools.join(', ')}</dd></div>}
+          {(c.languages?.length ?? 0) > 0 && <div><dt className="gr-label">Tongues</dt><dd>{c.languages!.map((l) => languageById(l)?.name ?? l).join(', ')}</dd></div>}
+        </dl>
+
+        <FeaturesWindow c={c} features={d.origin.features} />
 
         <section className="gr-window" style={{ '--tincture': 'var(--tincture-4)', width: '100%' } as CSSProperties}>
-          <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{isCaster ? 'Spell slots' : 'Hit dice'}</span></div></div>
+          <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{hasSlots ? 'Spell slots' : 'Hit dice'}</span></div></div>
           <div className="gr-window__body" style={{ gap: 10 }}>
             {d.slotsMax.map((max, i) => max > 0 && (
               <div key={i} className="slotrow">
@@ -297,7 +305,7 @@ export function SheetScreen({ c }: { c: Character }) {
               </div>
             ))}
             <button className="row" onClick={() => setSheet('short')}
-              style={{ gap: 10, padding: isCaster ? '10px 0 0' : 0, border: 0, borderTop: isCaster ? '2px solid var(--ink)' : 0, background: 'transparent', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+              style={{ gap: 10, padding: hasSlots ? '10px 0 0' : 0, border: 0, borderTop: hasSlots ? '2px solid var(--ink)' : 0, background: 'transparent', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
               <span style={{ fontWeight: 700 }}>Hit dice</span>
               <span className="muted">Short rest</span>
               <span className="num" style={{ marginLeft: 'auto', fontSize: 16 }}>{c.level - c.hitDiceUsed} / {c.level} d{d.hitDie}</span>
@@ -397,11 +405,25 @@ export function SheetScreen({ c }: { c: Character }) {
 
       {sheet === 'ac' && (
         <BottomSheet title="Armor class" onClose={() => setSheet(null)}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 16 }}>Armor, shield and magic included</span>
-            <Stepper label="Armor class" value={c.armorClass} min={1} max={30} onChange={(v) => set((x) => ({ ...x, armorClass: v }))} />
+          <div className="seg" role="group" aria-label="How AC is set">
+            {([[true, 'From armour'], [false, 'Set by hand']] as const).map(([auto, label]) => {
+              const on = !!c.creation?.acAuto === auto;
+              return (
+                <button key={label} className={on ? 'segbtn is-on' : 'segbtn'} aria-pressed={on}
+                  onClick={() => set((x) => ({ ...x, armorClass: d.ac, creation: { ...(x.creation ?? { method: 'manual', base: x.abilities, boosts: {}, hpAuto: false }), acAuto: auto } }))}>
+                  {label}
+                </button>
+              );
+            })}
           </div>
-          <span className="muted">Without armor your AC is 10 + Dexterity modifier ({10 + d.mods.dex}).</span>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 16 }}>{c.creation?.acAuto ? 'Equipped armour and shield' : 'Armor, shield and magic included'}</span>
+            <Stepper label="Armor class" value={d.ac} min={1} max={30}
+              onChange={(v) => set((x) => ({ ...x, armorClass: v, creation: x.creation ? { ...x.creation, acAuto: false } : x.creation }))} />
+          </div>
+          <span className="muted">{c.creation?.acAuto
+            ? `Worn: ${c.inventory.filter((i) => i.equipped && i.armor).map((i) => i.name).join(', ') || 'no armour'}. Equip armour in the pack to change it; using the stepper switches to setting it by hand.`
+            : `Without armor your AC is 10 + Dexterity modifier (${10 + d.mods.dex}).`}</span>
           <button className="gr-btn gr-btn--primary" style={{ height: 48 }} onClick={() => setSheet(null)}>Done</button>
         </BottomSheet>
       )}

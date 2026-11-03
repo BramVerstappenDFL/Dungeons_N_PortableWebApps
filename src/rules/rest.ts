@@ -1,6 +1,7 @@
 import type { Character, ClassData } from '../types';
 import { abilityMod } from './abilities';
 import { rollDie } from './dice';
+import { originOf, restoreFeatures } from './origin';
 
 /** Spends one Hit Die during a short rest: roll the die + CON mod (min 0) and heal. */
 export function spendHitDie(c: Character, cls: ClassData): { character: Character; roll: number; healed: number } | null {
@@ -17,17 +18,22 @@ export function spendHitDie(c: Character, cls: ClassData): { character: Characte
 
 /** Finishes a short rest: Warlocks regain all Pact Magic slots. */
 export function finishShortRest(c: Character, cls: ClassData): Character {
-  if (cls.casterType !== 'pact') return c;
-  return { ...c, spellSlotsUsed: Array(9).fill(0) };
+  const rested = restoreFeatures(c, 'short');
+  if (cls.casterType !== 'pact') return rested;
+  return { ...rested, spellSlotsUsed: Array(9).fill(0) };
 }
 
 /**
  * Long rest (2024 rules): regain all HP and all spent Hit Dice, restore spell slots,
- * temp HP end, death saves reset, Exhaustion level drops by 1, concentration ends.
+ * temp HP end, death saves reset, Exhaustion level drops by 1, concentration ends,
+ * and every limited feature use comes back.
  */
 export function longRest(c: Character): Character {
+  // Human Resourceful: Heroic Inspiration whenever you finish a long rest.
+  const resourceful = originOf(c).features.some((f) => f.id === 'resourceful');
   return {
-    ...c,
+    ...restoreFeatures(c, 'long'),
+    inspiration: c.inspiration || resourceful,
     hp: { ...c.hp, current: c.hp.max, temp: 0 },
     hitDiceUsed: 0,
     spellSlotsUsed: Array(9).fill(0),

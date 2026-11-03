@@ -135,7 +135,25 @@ for (const c of classes) {
   c.kits = kitsOf(raw);
 }
 
-const traitOf = (id) => ({ id: short(id), name: t(id, 'name'), description: t(id, 'description') ?? '' });
+/** Mechanics that the app applies: resistances, darkvision, HP per level, speed and granted spells. */
+function mechanicsOf(entry) {
+  const m = {};
+  for (const e of entry.effects || []) {
+    const tag = e.value?.tag;
+    if (e.target === 'damage.resistances' && tag) (m.resistances ??= []).push(tag.replace('damage.', ''));
+    if (e.target === 'senses.darkvision') m.darkvision = e.value;
+    if (e.target === 'hp.perLevel') m.hpPerLevel = e.value;
+    if (e.target === 'combat.speed' && e.op === 'add') m.speedBonus = e.value;
+    if (e.target === 'spells.species' && e.value?.item) {
+      const lvl = /level\.total >= (\d+)/.exec(e.when ?? '');
+      (m.spells ??= []).push({ id: short(e.value.item), minLevel: lvl ? Number(lvl[1]) : 1 });
+    }
+  }
+  if ((entry.choices || []).some((c) => c.id === 'ability' && c.from?.options?.some((o) => o.id === 'int'))) m.abilityChoice = true;
+  return m;
+}
+const traitsById = Object.fromEntries(load('traits').map((tr) => [tr.id, tr]));
+const traitOf = (id) => ({ id: short(id), name: t(id, 'name'), description: t(id, 'description') ?? '', ...mechanicsOf(traitsById[id] ?? {}) });
 const species = load('species').map((s) => {
   const traits = (s.grants || []).map((g) => g.item).filter((i) => i?.startsWith('traits.')).map(traitOf);
   const sizeChoice = (s.choices || []).find((c) => c.id === 'size');
@@ -152,11 +170,17 @@ const species = load('species').map((s) => {
 const lineages = load('lineages').map((l) => ({
   id: short(l.id), name: t(l.id, 'name'), speciesId: short(l.fields.species),
   ...(l.fields.damageType ? { damageType: l.fields.damageType } : {}),
+  ...mechanicsOf(l),
   description: t(l.id, 'description') ?? '',
 })).sort((a, b) => a.name.localeCompare(b.name));
 
 const subclasses = load('subclasses').map((s) => ({
-  id: short(s.id), name: t(s.id, 'name'), classId: short(s.fields.class), description: t(s.id, 'description') ?? '',
+  id: short(s.id), name: t(s.id, 'name'), classId: short(s.fields.class),
+  features: (s.grants || []).filter((g) => g.item?.startsWith('features.')).map((g) => ({
+    id: g.item.split('.').pop(), name: t(g.item, 'name'), level: Number(/>= (\d+)/.exec(g.when ?? '')?.[1] ?? 3),
+    description: t(g.item, 'description') ?? '',
+  })),
+  description: t(s.id, 'description') ?? '',
 }));
 
 const feats = load('feats').map((f) => ({
@@ -179,7 +203,7 @@ const backgrounds = load('backgrounds').map((b) => {
     id: short(b.id), name: t(b.id, 'name'), skills, abilities,
     feat: featGrant ? short(featGrant.item) : undefined,
     featNote: featOption ? featOption.charAt(0).toUpperCase() + featOption.slice(1) : undefined,
-    tool: tool ? itemIndex[tool]?.name : undefined,
+    tool: tool ? itemIndex[tool]?.name : /\*\*Tool Proficiency:\*\* ([^\n]+)/.exec(t(b.id, 'description') ?? '')?.[1]?.replace(/^Choose one kind of /, '').replace(/ \(see chapter \d\)/, '').trim(),
     kits: kitsOf(b),
     description: t(b.id, 'description') ?? '',
   };
@@ -205,6 +229,7 @@ write('classes.json', classes);
 write('species.json', species);
 write('backgrounds.json', backgrounds);
 write('weapons.json', weapons);
+write('armor.json', load('armor').map((a) => ({ id: short(a.id), name: t(a.id, 'name'), category: a.fields.category, ac: a.fields.baseAc, weight: a.fields.weight ?? 0 })));
 write('lineages.json', lineages);
 write('subclasses.json', subclasses);
 write('feats.json', feats);

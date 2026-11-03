@@ -2,6 +2,7 @@ import type { Ability, Character } from '../types';
 import { classById, speciesById } from '../data';
 import { ABILITIES, abilityMod, proficiencyBonus, skillBonus } from './abilities';
 import { maxSlots } from './slots';
+import { armorClassOf, originOf } from './origin';
 
 export const CONDITIONS = [
   'Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible',
@@ -20,7 +21,10 @@ export function derive(c: Character) {
   const spellMod = mods[spellAbility];
   // 2024 Exhaustion: d20 tests take -2 per level.
   const d20Penalty = -2 * c.exhaustion;
+  const origin = originOf(c);
   return {
+    origin,
+    ac: armorClassOf(c),
     cls,
     species,
     pb,
@@ -30,8 +34,8 @@ export function derive(c: Character) {
     spellDC: 8 + pb + spellMod,
     spellAttack: pb + spellMod,
     slotsMax: maxSlots(cls?.casterType ?? 'none', c.level),
-    speed: Math.max(0, (c.speedOverride ?? species?.speed ?? 30) - 5 * c.exhaustion),
-    initiative: mods.dex + d20Penalty,
+    speed: Math.max(0, (c.speedOverride ?? origin.speed) - 5 * c.exhaustion),
+    initiative: mods.dex + origin.initiativeBonus + d20Penalty,
     passivePerception: 10 + skillBonus(c.abilities, c.level, 'perception', c.skills, c.expertise),
     saveBonus: (a: Ability) => mods[a] + (cls?.saves.includes(a) ? pb : 0) + d20Penalty,
     skill: (id: string) => skillBonus(c.abilities, c.level, id, c.skills, c.expertise) + d20Penalty,

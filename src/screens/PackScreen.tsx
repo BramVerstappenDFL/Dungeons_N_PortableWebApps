@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Character, Currency, Item, ItemKind } from '../types';
-import { WEAPONS, weaponById } from '../data';
+import { WEAPONS, armorByName, weaponById } from '../data';
+import { armorClassOf } from '../rules/origin';
 import { uid, useStore } from '../store/characters';
 import { Icon } from '../ui/Icon';
 import { TabBar } from '../ui/TabBar';
@@ -57,13 +58,17 @@ export function PackScreen({ c }: { c: Character }) {
       weaponId: draft.kind === 'weapon' ? w?.id : undefined,
       effect: draft.kind === 'consumable' && draft.effect.trim() ? draft.effect.replace(/\s+/g, '') : undefined,
     };
+    // Armour from the SRD table (by name) counts towards AC when equipped.
+    const a = draft.kind === 'gear' ? armorByName(item.name) : undefined;
+    if (a) item.armor = { category: a.category, ac: a.ac };
     setItems((list) => (draft.id ? list.map((x) => (x.id === draft.id ? item : x)) : [item, ...list]));
     setDraft(null);
   };
   const edit = (i: Item) => setDraft({ id: i.id, name: i.name, kind: i.kind, weaponId: i.weaponId ?? '', qty: i.qty, weight: String(i.weight), effect: i.effect ?? '', notes: i.notes });
   const meta = (i: Item) => {
     const w = weaponById(i.weaponId);
-    return [KIND_LABEL[i.kind], `${i.weight} lb`, w ? `${w.damage} ${w.damageType}` : i.effect ? prettyExpr(i.effect) : i.notes].filter(Boolean).join(' · ');
+    const armor = i.armor ? (i.armor.category === 'shield' ? `+${i.armor.ac} AC` : `AC ${i.armor.ac}${i.armor.category === 'light' ? ' + DEX' : i.armor.category === 'medium' ? ' + DEX (max 2)' : ''}`) : '';
+    return [i.armor ? 'Armour' : KIND_LABEL[i.kind], `${i.weight} lb`, w ? `${w.damage} ${w.damageType}` : armor || (i.effect ? prettyExpr(i.effect) : i.notes)].filter(Boolean).join(' · ');
   };
   const effectOk = !draft?.effect.trim() || /^(\d*d\d+|\d+)([+-](\d*d\d+|\d+))*$/i.test(draft.effect.replace(/\s+/g, ''));
 
@@ -71,6 +76,7 @@ export function PackScreen({ c }: { c: Character }) {
     <div className="screen">
       <header className="hdr">
         <h1>Inventory</h1>
+        {c.creation?.acAuto && <span key={armorClassOf(c)} className="gr-tag ac-tag" aria-live="polite">AC {armorClassOf(c)}</span>}
         <button className="gr-btn gr-btn--primary gr-btn--small" style={{ height: 40 }} onClick={() => setDraft(blank())}><Icon name="plus" />Add item</button>
       </header>
 

@@ -1,6 +1,7 @@
-import type { Ability, AbilityScores, Character, Item, KitItem, Size, StartingKit } from '../types';
-import { classById, speciesById, speciesSpeed } from '../data';
-import { ABILITIES, abilityMod, defaultMaxHp, STANDARD_ARRAY } from './abilities';
+import type { Ability, AbilityScores, Character, CharacterSpell, Item, KitItem, Size, StartingKit } from '../types';
+import { classById } from '../data';
+import { armorClassFrom, originOf } from './origin';
+import { ABILITIES, defaultMaxHp, STANDARD_ARRAY } from './abilities';
 import { newCombat } from './combat';
 
 /** Fallback key ability per class, when the data has no primary ability. */
@@ -50,6 +51,7 @@ export function kitItems(kits: (StartingKit | undefined)[], makeId: () => string
       id: makeId(), name: i.name, qty: i.qty, weight: i.weight, notes: '',
       equipped: !!(i.weaponId || i.armor), kind: i.weaponId ? 'weapon' : 'gear',
       ...(i.weaponId ? { weaponId: i.weaponId } : {}),
+      ...(i.armor ? { armor: i.armor } : {}),
     });
   }
   return out;
@@ -58,22 +60,8 @@ export function kitItems(kits: (StartingKit | undefined)[], makeId: () => string
 /** Starting gold from the chosen kits. */
 export const kitGold = (kits: (StartingKit | undefined)[]) => kits.reduce((t, k) => t + (k?.gp ?? 0), 0);
 
-/**
- * Armour class at level 1: the best body armour from the kit (light adds DEX, medium up to +2, heavy none),
- * else Unarmored Defense for barbarians (CON) and monks (WIS), else 10 + DEX. A shield adds +2 except for monks.
- */
-export function startingArmorClass(classId: string, scores: AbilityScores, items: KitItem[]): number {
-  const dex = abilityMod(scores.dex);
-  const body = items.filter((i) => i.armor && i.armor.category !== 'shield').map((i) => {
-    const a = i.armor!;
-    return a.category === 'heavy' ? a.ac : a.category === 'medium' ? a.ac + Math.min(2, dex) : a.ac + dex;
-  });
-  const shield = classId !== 'monk' && items.some((i) => i.armor?.category === 'shield') ? 2 : 0;
-  if (body.length) return Math.max(...body) + shield;
-  if (classId === 'barbarian') return 10 + dex + abilityMod(scores.con) + shield;
-  if (classId === 'monk') return 10 + dex + abilityMod(scores.wis);
-  return 10 + dex + shield;
-}
+/** Armour class at level 1 from the kit armour (see `armorClassFrom`). */
+export const startingArmorClass = (classId: string, scores: AbilityScores, items: KitItem[]) => armorClassFrom(classId, scores, items);
 
 export interface NewCharacterInput {
   id: string;
@@ -95,6 +83,11 @@ export interface NewCharacterInput {
   languages?: string[]; // picked besides Common
   kits?: (StartingKit | undefined)[]; // class kit, background kit
   makeId?: () => string;
+  originAbility?: Ability;
+  extraFeat?: string; // Human Versatile
+  extraFeatNote?: string;
+  originPicks?: { keenSenses?: string; skillful?: string; skilled?: string[] };
+  featSpells?: CharacterSpell[]; // Magic Initiate picks
 }
 
 /** Final scores: base plus background increases, capped at 20. */
@@ -117,8 +110,7 @@ export function buildCharacter(i: NewCharacterInput): Character {
   let n = 0;
   const makeId = i.makeId ?? (() => `${i.id}-k${n++}`);
   const hitDie = cls?.hitDie ?? 8;
-  const maxHp = defaultMaxHp(hitDie, 1, abilities.con);
-  return {
+  const draft: Character = {
     id: i.id,
     name: i.name.trim(),
     classId: i.classId,
@@ -129,13 +121,13 @@ export function buildCharacter(i: NewCharacterInput): Character {
     skills: [...new Set([...i.backgroundSkills, ...i.classSkills])],
     expertise: [],
     armorClass: startingArmorClass(i.classId, abilities, kits.flatMap((k) => k?.items ?? [])),
-    hp: { max: maxHp, current: maxHp, temp: 0 },
+    hp: { max: 0, current: 0, temp: 0 },
     hitDiceUsed: 0,
     deathSaves: { successes: 0, failures: 0 },
     exhaustion: 0,
     conditions: [],
     spellSlotsUsed: Array(9).fill(0),
-    spells: [],
+    spells: i.featSpells ?? [],
     concentration: null,
     inventory: kitItems(kits, makeId),
     currency: { cp: 0, sp: 0, ep: 0, gp: kitGold(kits), pp: 0 },
@@ -144,15 +136,28 @@ export function buildCharacter(i: NewCharacterInput): Character {
     inspiration: false,
     notes: [],
     combat: newCombat(),
-    creation: { method: i.method ?? 'pointbuy', base: i.base, boosts: i.boosts, hpAuto: true },
+    creation: { method: i.method ?? 'pointbuy', base: i.base, boosts: i.boosts, hpAuto: true, acAuto: true },
     ...(i.lineageId ? { lineageId: i.lineageId } : {}),
-    ...(speciesSpeed(i.speciesId, i.lineageId) !== speciesById(i.speciesId)?.speed ? { speedOverride: speciesSpeed(i.speciesId, i.lineageId) } : {}),
     ...(i.size ? { size: i.size } : {}),
     ...(i.subclassId ? { subclassId: i.subclassId } : {}),
     ...(i.originFeat ? { originFeat: i.originFeat } : {}),
     ...(i.originFeatNote ? { originFeatNote: i.originFeatNote } : {}),
+    ...(i.originAbility ? { originAbility: i.originAbility } : {}),
+    ...(i.extraFeat ? { extraFeat: i.extraFeat } : {}),
+    ...(i.extraFeatNote ? { extraFeatNote: i.extraFeatNote } : {}),
+    ...(i.originPicks ? { originPicks: i.originPicks } : {}),
     languages: ['common', ...(i.languages ?? []).filter((l) => l !== 'common')],
+    featureUses: {},
     createdAt: i.now,
     updatedAt: i.now,
+  };
+  // Species, lineage and feat effects: extra skills and tools, and HP per level (Dwarven Toughness, Tough).
+  const o = originOf(draft);
+  const maxHp = defaultMaxHp(hitDie, 1, abilities.con) + o.hpPerLevel;
+  return {
+    ...draft,
+    skills: [...new Set([...draft.skills, ...o.skills])],
+    tools: o.tools,
+    hp: { max: maxHp, current: maxHp, temp: 0 },
   };
 }
