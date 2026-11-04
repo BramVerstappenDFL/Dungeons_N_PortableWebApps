@@ -4,7 +4,8 @@ import type { Character, Item, Note, RollLogEntry } from '../types';
 import { roll as rollDice, type RollMode, type RollResult } from '../rules/dice';
 import { XP_TABLE } from '../rules/xp';
 import { newCombat } from '../rules/combat';
-import { armorByName } from '../data';
+import { armorByName, classById } from '../data';
+import { pactSlotLevel } from '../rules/slots';
 
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
 const MAX_LOG = 100;
@@ -44,8 +45,27 @@ export function migrateCharacter(raw: unknown): Character {
     const a = i.armor ?? armorByName(i.name ?? '');
     return { ...i, kind: i.kind ?? 'gear', ...(a ? { armor: { category: a.category, ac: a.ac } } : {}) };
   });
+  // Version 5 and earlier: one Hit Dice count, and a Warlock's pact slots kept in the slot array.
+  const used = c.hitDiceUsed as unknown;
+  const hitDiceUsed = typeof used === 'number'
+    ? (used > 0 ? { [classById(c.classId)?.hitDie ?? 8]: used } : {})
+    : used && typeof used === 'object' ? (used as Record<number, number>) : {};
+  let spellSlotsUsed = Array.isArray(c.spellSlotsUsed) ? c.spellSlotsUsed : Array(9).fill(0);
+  let pactSlotsUsed = c.pactSlotsUsed;
+  if (typeof pactSlotsUsed !== 'number') {
+    pactSlotsUsed = 0;
+    if (!c.multiclass?.length && classById(c.classId)?.casterType === 'pact') {
+      const i = pactSlotLevel(c.level ?? 1) - 1;
+      pactSlotsUsed = spellSlotsUsed[i] ?? 0;
+      spellSlotsUsed = Array(9).fill(0);
+    }
+  }
   return {
     ...c,
+    hitDiceUsed,
+    spellSlotsUsed,
+    pactSlotsUsed,
+    customSpells: Array.isArray(c.customSpells) ? c.customSpells : [],
     xp: typeof c.xp === 'number' ? c.xp : XP_TABLE[Math.max(1, Math.min(20, c.level ?? 1))],
     inspiration: c.inspiration ?? false,
     notes,
@@ -112,7 +132,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'dnd-assist',
-      version: 5,
+      version: 6,
       partialize: (s) => ({ characters: s.characters, activeId: s.activeId, theme: s.theme }),
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as { characters?: unknown[]; activeId?: string | null; theme?: Theme | null };

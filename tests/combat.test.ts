@@ -10,6 +10,8 @@ describe('combat', () => {
   });
   it('maps casting times to economy slots', () => {
     expect(slotForCastingTime('Action')).toBe('action');
+    expect(slotForCastingTime('1 action')).toBe('action');
+    expect(slotForCastingTime('1 bonus action')).toBe('bonus');
     expect(slotForCastingTime('Bonus Action')).toBe('bonus');
     expect(slotForCastingTime('Reaction')).toBe('reaction');
     expect(slotForCastingTime('1 minute')).toBeNull();

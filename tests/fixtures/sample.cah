@@ -1,0 +1,54 @@
+{
+  "jsonType": "character",
+  "name": "Test Goliath",
+  "jobs": [
+    { "jobId": "paladin", "archetypeId": "paladin_oath_of_the_ancients", "level": 3 },
+    { "jobId": "warlock", "archetypeId": "warlock_the_great_old_one", "level": 3 },
+    { "jobId": "artificer", "level": 1 }
+  ],
+  "race": { "raceId": "goliath" },
+  "background": { "backgroundId": "acolyte" },
+  "alignmentName": "LAWFUL_GOOD",
+  "exp": 14000,
+  "strength": { "score": 14 }, "dexterity": { "score": 12 }, "constitution": { "score": 18 },
+  "intelligence": { "score": 10 }, "wisdom": { "score": 7 }, "charisma": { "score": 14 },
+  "skills": [
+    { "typeName": "ATHLETICS", "proficiencyName": "FULL" },
+    { "typeName": "SLEIGHT_OF_HAND", "proficiencyName": "EXPERTISE" },
+    { "typeName": "STEALTH", "proficiencyName": "HALF" },
+    { "typeName": "ARCANA", "proficiencyName": "NONE" }
+  ],
+  "baseAc": 10, "extraAC": 0, "baseHp": 53, "hp": 70, "tempHp": 5,
+  "successes": 1, "failures": 0,
+  "armors": [
+    { "name": "Plate", "category": "Heavy Armor", "armor": 18, "equipped": true, "weight": "65 lb.", "strRequired": 15, "stealthDisadvantage": true },
+    { "name": "Leather", "category": "Light Armor", "armor": 11, "equipped": false, "weight": "10 lb." }
+  ],
+  "weapons": [
+    { "name": "Greatsword", "damageDiceAmount": 2, "damageDiceName": "d6", "damageTypeName": "Slashing", "properties": "Heavy, two-handed" }
+  ],
+  "equipment": [{ "name": "Rope", "quantity": 2, "weight": "1/2 lb" }],
+  "gold": 25, "silver": 3, "copper": 0, "electrum": 0, "platinum": 1,
+  "notes": [
+    { "text": "Old tip", "archivedString": "2026-07-14T14:24:06Z" },
+    { "text": "I have tremorsense now" }
+  ],
+  "specialAbilities": [{ "name": "Lay On Hands Points", "usesLeft": 15 }],
+  "selectableFeatures": [{ "name": "Eldritch Invocations", "selectedFeatures": [{ "name": "Grasp of Hadar" }] }],
+  "proficiencies": [{ "typeName": "ARMOR", "name": "Heavy Armor" }, { "typeName": "WEAPON", "name": "Greatsword" }],
+  "spells": [
+    { "name": "Eldritch Blast", "level": 0, "school": "Evocation", "classes": "warlock" },
+    { "name": "Sanctuary", "level": 1, "school": "abjuration", "classes": "cleric", "prepared": true },
+    {
+      "name": "Arms of Hadar", "level": 1, "school": "conjuration", "classes": "warlock, blood_hunter",
+      "castingTime": "1 action", "range": "Self (10 feet radius)", "components": "V, S", "duration": "Instantaneous",
+      "description": "Each creature within 10 feet of you must make a Strength saving throw. On a failed save, a target takes 2d6 necrotic damage.",
+      "higherLevels": "The damage increases by 1d6 for each slot level above 1st."
+    },
+    {
+      "name": "Homebrew Ward", "level": 2, "school": "Abjuration", "classes": "paladin",
+      "castingTime": "1 action", "range": "Touch", "components": "V, S, M (a silver ring)", "duration": "Concentration, up to 1 minute",
+      "description": "A ward protects the target.", "isRitual": true
+    }
+  ]
+}

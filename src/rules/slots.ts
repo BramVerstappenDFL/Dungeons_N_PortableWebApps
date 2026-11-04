@@ -39,3 +39,23 @@ export function maxSpellLevel(type: CasterType, level: number) {
 
 /** Cantrip damage dice multiplier: x1, x2 at 5, x3 at 11, x4 at 17. */
 export const cantripDiceMultiplier = (level: number) => (level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1);
+
+export interface PactSlots { count: number; level: number }
+
+/**
+ * Spell slots for one or more classes (2024 multiclass rules).
+ * One Spellcasting class uses its own table. With several, add full-caster levels and half of
+ * half-caster levels (rounded up), then read the full-caster table. Pact Magic stays separate.
+ */
+export function multiclassSlots(classes: { casterType: CasterType; level: number }[]): { slots: number[]; pact: PactSlots | null } {
+  const casters = classes.filter((c) => c.level > 0 && (c.casterType === 'full' || c.casterType === 'half'));
+  let slots = Array(9).fill(0);
+  if (casters.length === 1) slots = maxSlots(casters[0].casterType, casters[0].level);
+  else if (casters.length > 1) {
+    const casterLevel = casters.reduce((n, c) => n + (c.casterType === 'full' ? c.level : Math.ceil(c.level / 2)), 0);
+    slots = maxSlots('full', casterLevel);
+  }
+  const pactLevel = classes.filter((c) => c.casterType === 'pact').reduce((n, c) => n + c.level, 0);
+  const pact = pactLevel > 0 ? { count: PACT[Math.min(20, pactLevel) - 1][0], level: PACT[Math.min(20, pactLevel) - 1][1] } : null;
+  return { slots, pact };
+}

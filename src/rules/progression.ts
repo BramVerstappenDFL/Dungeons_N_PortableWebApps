@@ -2,10 +2,13 @@
 import type { Ability, Character, ClassFeature, LevelRecord, SubclassFeature } from '../types';
 import { classById, featById, subclassById } from '../data';
 import { abilityMod, proficiencyBonus } from './abilities';
-import { maxSlots } from './slots';
+import type { PactSlots } from './slots';
 import { levelForXp } from './xp';
 import { originOf } from './origin';
-import { FIGHTING_STYLE_LEVEL, asiLevels, cantripsKnown, classFeatures, featuresAtLevel, preparedSpells } from './classes';
+import {
+  FIGHTING_STYLE_LEVEL, asiLevels, cantripsKnown, classFeatures, classLevelOf, classLevels, featuresAtLevel, preparedSpells,
+  slotsOf, withClassLevel,
+} from './classes';
 
 export const MAX_LEVEL = 20;
 
@@ -16,7 +19,10 @@ export const pendingLevels = (c: Character) => Math.max(0, levelForXp(c.xp) - c.
 export const hpAverage = (hitDie: number) => hitDie / 2 + 1;
 
 export interface LevelUpPlan {
-  level: number; // the level being reached
+  level: number; // the character level being reached
+  classId: string; // the class taking the level
+  classLevel: number; // the level reached in that class
+  newClass: boolean; // multiclassing into this class now
   hitDie: number;
   hpAverage: number;
   conMod: number;
@@ -30,39 +36,51 @@ export interface LevelUpPlan {
   newCantrips: number;
   prepared: [number, number];
   slots: [number[], number[]];
+  pact: [PactSlots | null, PactSlots | null];
   pb: [number, number];
   resources: { name: string; from: number; to: number }[];
 }
 
 export const hasFightingStyle = (c: Character) => (c.feats ?? []).some((f) => featById(f.id)?.category === 'fighting-style');
 
-/** What reaching the next level brings. */
-export function levelUpPlan(c: Character, subclassId = c.subclassId): LevelUpPlan {
+/** The subclass a class has on this character. */
+export const subclassOf = (c: Character, classId: string) => classLevels(c).find((x) => x.id === classId)?.subclassId;
+
+/** What reaching the next level brings, taken in `classId` (default: the starting class). */
+export function levelUpPlan(c: Character, subclassId?: string, classId = c.classId): LevelUpPlan {
   const level = c.level + 1;
-  const cls = classById(c.classId);
+  const from = classLevelOf(c, classId);
+  const classLevel = from + 1;
+  const sub = subclassId ?? subclassOf(c, classId);
+  const cls = classById(classId);
   const hitDie = cls?.hitDie ?? 8;
-  const casterType = cls?.casterType ?? 'none';
-  const styleAt = FIGHTING_STYLE_LEVEL[c.classId];
-  const after = { ...c, level, subclassId };
+  const styleAt = FIGHTING_STYLE_LEVEL[classId];
+  const after = withClassLevel(c, classId, sub);
+  const [slotsBefore, slotsAfter] = [slotsOf(c), slotsOf(after)];
+  const known = (n: number, f: (id: string, l: number) => number) => (n > 0 ? f(classId, n) : 0);
   const before = new Map(classFeatures(c).map((f) => [f.id, f]));
   const resources = classFeatures(after)
     .filter((f) => f.uses && before.get(f.id)?.uses && before.get(f.id)!.uses!.max !== f.uses.max)
     .map((f) => ({ name: f.name.replace(/ \(.*\)$/, ''), from: before.get(f.id)!.uses!.max, to: f.uses!.max }));
   return {
     level,
+    classId,
+    classLevel,
+    newClass: from === 0,
     hitDie,
     hpAverage: hpAverage(hitDie),
     conMod: abilityMod(c.abilities.con),
     bonusPerLevel: originOf(c).hpPerLevel,
-    subclass: level === 3,
-    asi: asiLevels(c.classId).includes(level),
-    epicBoon: level === 19,
-    fightingStyle: !!styleAt && level >= styleAt && !hasFightingStyle(c),
-    classFeatures: featuresAtLevel(c.classId, level),
-    pathFeatures: (subclassById(subclassId)?.features ?? []).filter((f) => f.level === level),
-    newCantrips: Math.max(0, cantripsKnown(c.classId, level) - cantripsKnown(c.classId, c.level)),
-    prepared: [preparedSpells(c.classId, c.level), preparedSpells(c.classId, level)],
-    slots: [maxSlots(casterType, c.level), maxSlots(casterType, level)],
+    subclass: classLevel === 3,
+    asi: asiLevels(classId).includes(classLevel),
+    epicBoon: classLevel === 19,
+    fightingStyle: !!styleAt && classLevel >= styleAt && !hasFightingStyle(c),
+    classFeatures: featuresAtLevel(classId, classLevel),
+    pathFeatures: (subclassById(sub)?.features ?? []).filter((f) => f.level === classLevel),
+    newCantrips: Math.max(0, known(classLevel, cantripsKnown) - known(from, cantripsKnown)),
+    prepared: [known(from, preparedSpells), known(classLevel, preparedSpells)],
+    slots: [slotsBefore.slots, slotsAfter.slots],
+    pact: [slotsBefore.pact, slotsAfter.pact],
     pb: [proficiencyBonus(c.level), proficiencyBonus(level)],
     resources,
   };
@@ -75,6 +93,7 @@ export type AsiChoice =
 
 export interface LevelUpChoices {
   hp: { mode: 'average' } | { mode: 'roll'; roll: number };
+  classId?: string; // the class taking the level (default: the starting class)
   subclassId?: string;
   asi?: AsiChoice; // also used for the Epic Boon (a feat)
   fightingStyle?: string;
@@ -117,17 +136,18 @@ export function asiComplete(asi: AsiChoice | undefined): boolean {
 /** Applies one level with the player's choices. Pure; records what changed so it can be undone. */
 export function applyLevelUp(c: Character, ch: LevelUpChoices): Character {
   if (c.level >= MAX_LEVEL) return c;
-  const plan = levelUpPlan(c, ch.subclassId ?? c.subclassId);
+  const classId = ch.classId ?? c.classId;
+  const plan = levelUpPlan(c, ch.subclassId, classId);
   const level = plan.level;
   const record: LevelRecord = {
-    level, hp: 0, ...(ch.hp.mode === 'roll' ? { rolled: ch.hp.roll } : {}),
+    level, hp: 0, ...(classId !== c.classId ? { classId } : {}), ...(ch.hp.mode === 'roll' ? { rolled: ch.hp.roll } : {}),
     before: {
       abilities: c.abilities, subclassId: c.subclassId, skills: c.skills, expertise: c.expertise, spells: c.spells,
-      feats: c.feats, saveProficiencies: c.saveProficiencies, speedOverride: c.speedOverride,
+      feats: c.feats, saveProficiencies: c.saveProficiencies, speedOverride: c.speedOverride, multiclass: c.multiclass,
     },
   };
 
-  let next: Character = { ...c, level, subclassId: ch.subclassId ?? c.subclassId };
+  let next: Character = withClassLevel(c, classId, ch.subclassId);
   const feats = [...(c.feats ?? [])];
   const asi = plan.asi || plan.epicBoon ? ch.asi : undefined;
   next.abilities = applyAsi(c.abilities, asi);
@@ -141,7 +161,10 @@ export function applyLevelUp(c: Character, ch: LevelUpChoices): Character {
   }
   if (plan.fightingStyle && ch.fightingStyle) feats.push({ id: ch.fightingStyle, level });
   next.feats = feats;
-  if (ch.cantrips?.length) next.spells = [...c.spells, ...ch.cantrips.filter((id) => !c.spells.some((s) => s.id === id)).map((id) => ({ id, prepared: true }))];
+  if (ch.cantrips?.length) {
+    const multi = classLevels(next).length > 1;
+    next.spells = [...c.spells, ...ch.cantrips.filter((id) => !c.spells.some((s) => s.id === id)).map((id) => ({ id, prepared: true, ...(multi ? { classId } : {}) }))];
+  }
 
   // Hit points: the die (rolled or average) + CON, at least 1, plus per-level bonuses. A higher CON
   // modifier or a new per-level bonus (Tough) also counts for every earlier level.
@@ -165,6 +188,8 @@ export function undoLastLevel(c: Character): Character {
   return {
     ...c,
     ...rec.before,
+    // Records from before multiclassing have no `multiclass` key: those levels were all in the starting class.
+    multiclass: 'multiclass' in rec.before ? rec.before.multiclass : c.multiclass,
     level: c.level - 1,
     hp: { ...c.hp, max, current: Math.min(max, Math.max(0, c.hp.current - rec.hp)) },
     levelHistory: c.levelHistory!.slice(0, -1),

@@ -3,7 +3,7 @@ import type { Ability, AbilityScores, ArmorInfo, Character, CharacterSpell, Econ
 import { backgroundById, featById, lineageById, speciesById, subclassById } from '../data';
 import { abilityMod, proficiencyBonus } from './abilities';
 
-import { classFeatures, type FeatureDef, type Recharge } from './classes';
+import { classFeatures, classLevels, type FeatureDef, type Recharge } from './classes';
 export type { FeatureDef, Recharge } from './classes';
 
 /** Limited uses and action costs, keyed by SRD/PHB trait or feat id. `pb` = Proficiency Bonus uses. */
@@ -80,10 +80,12 @@ export function originOf(c: Character): Origin {
     id: featIds.indexOf(f.id) === i ? f.id : `${f.id}-${i}`, name: f.note ? `${f.name} (${f.note})` : f.name, source: 'Feat',
     text: (featById(f.id)?.description ?? '').replace(/^Origin Feat\s*/, ''), ...use(f.id),
   }));
-  const sub = subclassById(c.subclassId);
-  for (const pf of sub?.features ?? []) {
-    if (pf.level <= c.level) features.push({ id: `path-${pf.id}`, name: pf.name, source: 'Path', text: pf.description });
-  }
+  // Subclass features count from the level in that class, not the character level.
+  classLevels(c).forEach((x, i) => {
+    for (const pf of subclassById(x.subclassId)?.features ?? []) {
+      if (pf.level <= x.level) features.push({ id: i === 0 ? `path-${pf.id}` : `path-${x.subclassId}-${pf.id}`, name: pf.name, source: 'Path', text: pf.description });
+    }
+  });
 
   const ability = originAbilityOf(c.abilities, c.originAbility);
   const grantedSpells: CharacterSpell[] = [];

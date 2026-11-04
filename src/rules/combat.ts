@@ -14,7 +14,8 @@ export function setUsed(c: CombatState, slot: EconomySlot, used = true): CombatS
 
 /** Maps a spell's casting time to the economy slot it uses (null = not usable in combat). */
 export function slotForCastingTime(castingTime: string): EconomySlot | null {
-  const t = castingTime.toLowerCase();
+  // Accepts the older "1 action" / "1 bonus action" wording too.
+  const t = castingTime.toLowerCase().trim().replace(/^1\s+/, '');
   if (t.startsWith('bonus')) return 'bonus';
   if (t.startsWith('reaction')) return 'reaction';
   if (t.startsWith('action')) return 'action';

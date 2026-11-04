@@ -122,7 +122,7 @@ export function buildCharacter(i: NewCharacterInput): Character {
     expertise: [],
     armorClass: startingArmorClass(i.classId, abilities, kits.flatMap((k) => k?.items ?? [])),
     hp: { max: 0, current: 0, temp: 0 },
-    hitDiceUsed: 0,
+    hitDiceUsed: {},
     deathSaves: { successes: 0, failures: 0 },
     exhaustion: 0,
     conditions: [],

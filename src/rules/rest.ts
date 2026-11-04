@@ -1,26 +1,29 @@
-import type { Character, ClassData } from '../types';
+import type { Character } from '../types';
 import { abilityMod } from './abilities';
 import { rollDie } from './dice';
 import { originOf, restoreFeatures } from './origin';
+import { hitDicePools } from './classes';
 
-/** Spends one Hit Die during a short rest: roll the die + CON mod (min 0) and heal. */
-export function spendHitDie(c: Character, cls: ClassData): { character: Character; roll: number; healed: number } | null {
-  if (c.hitDiceUsed >= c.level) return null;
-  const roll = rollDie(cls.hitDie);
+/** Spends one Hit Die of a size during a short rest (default: the largest left): roll it + CON mod (min 0) and heal. */
+export function spendHitDie(c: Character, die?: number): { character: Character; roll: number; healed: number; die: number } | null {
+  const pools = hitDicePools(c);
+  const pool = die ? pools.find((p) => p.die === die) : pools.find((p) => p.used < p.total);
+  if (!pool || pool.used >= pool.total) return null;
+  const roll = rollDie(pool.die);
   const healed = Math.max(0, roll + abilityMod(c.abilities.con));
   const current = Math.min(c.hp.max, c.hp.current + healed);
   return {
-    character: { ...c, hitDiceUsed: c.hitDiceUsed + 1, hp: { ...c.hp, current } },
+    die: pool.die,
+    character: { ...c, hitDiceUsed: { ...c.hitDiceUsed, [pool.die]: pool.used + 1 }, hp: { ...c.hp, current } },
     roll,
     healed: current - c.hp.current,
   };
 }
 
-/** Finishes a short rest: Warlocks regain all Pact Magic slots. */
-export function finishShortRest(c: Character, cls: ClassData): Character {
+/** Finishes a short rest: short-rest features and all Pact Magic slots come back. */
+export function finishShortRest(c: Character): Character {
   const rested = restoreFeatures(c, 'short');
-  if (cls.casterType !== 'pact') return rested;
-  return { ...rested, spellSlotsUsed: Array(9).fill(0) };
+  return rested.pactSlotsUsed ? { ...rested, pactSlotsUsed: 0 } : rested;
 }
 
 /**
@@ -35,8 +38,9 @@ export function longRest(c: Character): Character {
     ...restoreFeatures(c, 'long'),
     inspiration: c.inspiration || resourceful,
     hp: { ...c.hp, current: c.hp.max, temp: 0 },
-    hitDiceUsed: 0,
+    hitDiceUsed: {},
     spellSlotsUsed: Array(9).fill(0),
+    pactSlotsUsed: 0,
     deathSaves: { successes: 0, failures: 0 },
     exhaustion: Math.max(0, c.exhaustion - 1),
     concentration: null,

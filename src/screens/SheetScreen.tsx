@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Ability, Character } from '../types';
-import { backgroundById, languageById, originName, subclassById, weaponById } from '../data';
+import { backgroundById, classById, languageById, originName, subclassById, weaponById } from '../data';
+import { classLabel } from '../rules/classes';
 import { allSpells, castingFor, hasFreeCast } from '../rules/origin';
 import { FeaturesWindow } from './FeaturesWindow';
 import { useStore } from '../store/characters';
@@ -39,7 +40,7 @@ export function SheetScreen({ c }: { c: Character }) {
   const roll = useStore((s) => s.roll);
   const nav = useNavigate();
   const d = derive(c);
-  const spells = useSpells();
+  const spells = useSpells(c);
   const set = (fn: (c: Character) => Character) => update(c.id, fn);
 
   const [tab, setTab] = useState<'weapons' | 'spells'>('weapons');
@@ -139,18 +140,19 @@ export function SheetScreen({ c }: { c: Character }) {
   const spellCards: CardItem[] = known
     .filter((k) => levelFilter === null || k.s.level === levelFilter)
     .map(({ s, cs }) => {
-      const cast = castingFor(c, cs, d.spellAbility);
+      const cast = castingFor(c, cs, d.classCasting(cs).ability);
       const rolls = spellRolls(s, Math.max(1, s.level), c.level, cast.mod);
       const effect = rolls[0] ? prettyExpr(rolls[0].expression) + (s.damageType ? ` ${s.damageType}` : '') : s.save ? `${s.save.toUpperCase()} save` : '—';
       return {
         key: s.id, name: s.name, level: s.level, kind: cap(s.school), tint: SCHOOL_TINT[s.school],
         short: `${ordinal(s.level)} · ${s.range}`,
-        facts: [['Level', ordinal(s.level)], ['Casting time', s.castingTime], ['Range', s.range], [cs.source ? 'Ability' : 'Duration', cs.source ? `${cast.ability.toUpperCase()} · DC ${cast.dc}` : s.duration], ['Effect', effect]],
+        facts: [['Level', ordinal(s.level)], ['Casting time', s.castingTime], ['Range', s.range], [cs.source || d.castingAbilities.length > 1 ? 'Ability' : 'Duration', cs.source || d.castingAbilities.length > 1 ? `${cast.ability.toUpperCase()} · DC ${cast.dc}` : s.duration], ['Effect', effect]],
         text: excerpt(s.description),
         foot: (
           <div className="gr-card__foot">
             <span className="gr-chip gr-chip--buff"><Icon name="check" />{s.level === 0 ? 'Known' : 'Prepared'}</span>
             {cs.source && <span className="gr-tag gr-tag--gilt">{cs.source === 'lineage' ? 'Lineage' : 'Feat'}</span>}
+            {s.id.startsWith('custom-') && <span className="gr-tag">Custom</span>}
             <span className="gr-tag">{s.level === 0 ? 'At will' : cs.source && hasFreeCast(c, cs) ? 'Free cast ready' : `Slot ${ordinal(s.level)}`}</span>
             {s.concentration && <span className="gr-tag">Concentration</span>}
           </div>
@@ -159,11 +161,11 @@ export function SheetScreen({ c }: { c: Character }) {
     });
   const cards = tab === 'weapons' ? weaponCards : spellCards;
   const acc = useAccordion(mainRef, cards.length);
-  const hasSlots = d.slotsMax.some((n) => n > 0) || c.spells.some((s) => !s.source);
+  const hasSlots = d.slotsMax.some((n) => n > 0) || !!d.pact || c.spells.some((s) => !s.source);
   const isCaster = hasSlots || known.length > 0;
 
   const bg = backgroundById(c.backgroundId);
-  const subtitle = [`Level ${shownLvl}`, [d.species ? originName(c.speciesId, c.lineageId) : undefined, d.cls?.name.toLowerCase()].filter(Boolean).join(' '), bg?.name].filter(Boolean).join(' · ');
+  const subtitle = [`Level ${shownLvl}`, [d.species ? originName(c.speciesId, c.lineageId) : undefined, classLabel(c).toLowerCase()].filter(Boolean).join(' '), bg?.name].filter(Boolean).join(' · ');
 
   // ---- Spell slots ----
   const toggleSlot = (lvl: number, idx: number) => set((x) => {
@@ -174,6 +176,12 @@ export function SheetScreen({ c }: { c: Character }) {
     used[lvl - 1] = Math.max(0, Math.min(max, used[lvl - 1]));
     return { ...x, spellSlotsUsed: used };
   });
+  const togglePact = (idx: number) => set((x) => {
+    const max = d.pact?.count ?? 0;
+    const used = Math.min(max, x.pactSlotsUsed ?? 0);
+    return { ...x, pactSlotsUsed: Math.max(0, Math.min(max, idx < max - used ? used + 1 : used - 1)) };
+  });
+  const pactUsed = Math.min(d.pact?.count ?? 0, c.pactSlotsUsed ?? 0);
 
   const down = c.hp.current === 0;
   const dead = c.deathSaves.failures >= 3;
@@ -285,7 +293,10 @@ export function SheetScreen({ c }: { c: Character }) {
 
         <dl className="origin-facts">
           {d.origin.feats.length > 0 && <div><dt className="gr-label">Feats</dt><dd>{d.origin.feats.map((f) => `${f.name}${f.note ? ` (${f.note})` : ''}`).join(', ')}</dd></div>}
-          {c.subclassId && <div><dt className="gr-label">Path</dt><dd>{subclassById(c.subclassId)?.name}{c.level < 3 ? ' (from level 3)' : ''}</dd></div>}
+          {d.classes.some((x) => x.subclassId) && (
+            <div><dt className="gr-label">Path</dt><dd>{d.classes.filter((x) => x.subclassId).map((x) =>
+              `${subclassById(x.subclassId)?.name}${d.classes.length > 1 ? ` (${classById(x.id)?.name})` : ''}${x.level < 3 ? ' (from level 3)' : ''}`).join(', ')}</dd></div>
+          )}
           <div><dt className="gr-label">Size</dt><dd>{cap(d.origin.size)}{d.origin.darkvision ? ` · Darkvision ${d.origin.darkvision} ft` : ''} · Passive Perception {d.passivePerception}</dd></div>
           {d.origin.resistances.length > 0 && <div><dt className="gr-label">Resists</dt><dd>{d.origin.resistances.map(cap).join(', ')}</dd></div>}
           {d.origin.tools.length > 0 && <div><dt className="gr-label">Tools</dt><dd>{d.origin.tools.join(', ')}</dd></div>}
@@ -311,11 +322,24 @@ export function SheetScreen({ c }: { c: Character }) {
                 <span className="muted" style={{ marginLeft: 'auto' }}>{max - c.spellSlotsUsed[i]} of {max}</span>
               </div>
             ))}
+            {d.pact && (
+              <div className="slotrow">
+                <span className="num" style={{ width: 44, fontSize: 16 }} title="Pact Magic: these slots come back on a short rest">{ordinal(d.pact.level)}</span>
+                {Array.from({ length: d.pact.count }, (_, k) => {
+                  const used = k >= d.pact!.count - pactUsed;
+                  return (
+                    <button key={k} className={used ? 'slot used pact' : 'slot pact'} onClick={() => togglePact(k)}
+                      aria-label={used ? `Restore a Pact Magic slot` : `Use a Pact Magic slot`} />
+                  );
+                })}
+                <span className="muted" style={{ marginLeft: 'auto' }}>Pact · {d.pact.count - pactUsed} of {d.pact.count}</span>
+              </div>
+            )}
             <button className="row" onClick={() => setSheet('short')}
               style={{ gap: 10, padding: hasSlots ? '10px 0 0' : 0, border: 0, borderTop: hasSlots ? '2px solid var(--ink)' : 0, background: 'transparent', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
               <span style={{ fontWeight: 700 }}>Hit dice</span>
               <span className="muted">Short rest</span>
-              <span className="num" style={{ marginLeft: 'auto', fontSize: 16 }}>{c.level - c.hitDiceUsed} / {c.level} d{d.hitDie}</span>
+              <span className="num" style={{ marginLeft: 'auto', fontSize: 16 }}>{d.hitDice.map((p) => `${p.total - p.used} / ${p.total} d${p.die}`).join(' · ')}</span>
             </button>
           </div>
         </section>
@@ -341,8 +365,8 @@ export function SheetScreen({ c }: { c: Character }) {
           ) : (
             <>
               <div className="grid3">
-                <div className="stat"><span className="gr-label">Save DC</span><span className="num" style={{ fontSize: 22 }}>{d.spellDC}</span></div>
-                <div className="stat"><span className="gr-label">Attack</span><span className="num" style={{ fontSize: 22 }}>{signed(d.spellAttack)}</span></div>
+                <div className="stat"><span className="gr-label">Save DC</span><span className="num" style={{ fontSize: 22 }}>{d.castingAbilities.map((k) => k.dc).join(' / ')}</span></div>
+                <div className="stat"><span className="gr-label">Attack</span><span className="num" style={{ fontSize: 22 }}>{d.castingAbilities.map((k) => signed(k.attack)).join(' / ')}</span></div>
                 <div className="stat"><span className="gr-label">Ready</span><span className="num" style={{ fontSize: 22 }}>{known.length}</span></div>
               </div>
               <div className="chips" role="group" aria-label="Spell level">
@@ -460,46 +484,56 @@ export function SheetScreen({ c }: { c: Character }) {
   );
 }
 
-/** Short rest: spend Hit Dice one at a time. Warlocks regain Pact Magic slots when it ends. */
+/** Short rest: spend Hit Dice one at a time. Pact Magic slots come back when it ends. */
 function ShortRestSheet({ c, onClose }: { c: Character; onClose: () => void }) {
   const update = useStore((s) => s.update);
   const d = derive(c);
   const [log, setLog] = useState<string[]>([]);
-  const left = c.level - c.hitDiceUsed;
-  const spend = () => {
-    if (!d.cls) return;
-    const r = spendHitDie(c, d.cls);
+  const left = d.hitDice.reduce((n, p) => n + p.total - p.used, 0);
+  const spend = (die: number) => {
+    const r = spendHitDie(c, die);
     if (!r) return;
     update(c.id, () => r.character);
-    setLog((l) => [`d${d.hitDie} (${r.roll}) ${signed(d.mods.con)} CON: healed ${r.healed}`, ...l]);
+    setLog((l) => [`d${r.die} (${r.roll}) ${signed(d.mods.con)} CON: healed ${r.healed}`, ...l]);
   };
   const finish = () => {
-    if (d.cls) update(c.id, (x) => finishShortRest(x, d.cls!));
+    update(c.id, finishShortRest);
     onClose();
   };
+  const dice = d.hitDice.map((p) => `d${p.die}`).join(' or ');
   return (
     <BottomSheet title="Short rest" onClose={finish}>
       <span style={{ fontSize: 16, lineHeight: 1.5, color: 'var(--text-muted)' }}>
-        Rest for an hour. Spend Hit Dice to heal: each one rolls d{d.hitDie} + your Constitution modifier.
+        Rest for an hour. Spend Hit Dice to heal: each one rolls {dice} + your Constitution modifier.
       </span>
       <div className="grid3">
         <div className="stat"><span className="gr-label">HP</span><span className="num" style={{ fontSize: 22 }}>{c.hp.current} / {c.hp.max}</span></div>
         <div className="stat"><span className="gr-label">Hit dice</span><span className="num" style={{ fontSize: 22 }}>{left} / {c.level}</span></div>
-        <div className="stat"><span className="gr-label">Die</span><span className="num" style={{ fontSize: 22 }}>d{d.hitDie}</span></div>
+        <div className="stat"><span className="gr-label">{d.hitDice.length > 1 ? 'Dice' : 'Die'}</span><span className="num" style={{ fontSize: 22 }}>{d.hitDice.map((p) => `d${p.die}`).join(' ')}</span></div>
       </div>
       {log.length > 0 && (
         <div className="panel panel--sm col" style={{ padding: '6px 12px' }}>
           {log.map((l, i) => <span key={i} style={{ padding: '4px 0', fontSize: 14.5 }}>{l}</span>)}
         </div>
       )}
-      {d.cls?.casterType === 'pact' && <span className="muted">Pact Magic slots come back when you finish.</span>}
+      {d.pact && <span className="muted">Pact Magic slots come back when you finish.</span>}
+      {d.hitDice.length > 1 && (
+        <div className="grid2">
+          {d.hitDice.map((p) => (
+            <button key={p.die} className="gr-btn gr-btn--roll" style={{ height: 48 }} onClick={() => spend(p.die)} disabled={p.used >= p.total || c.hp.current >= c.hp.max}>
+              <Icon name="d20" />Spend a d{p.die} ({p.total - p.used})
+            </button>
+          ))}
+        </div>
+      )}
       <div className="grid2">
-        <button className="gr-btn gr-btn--roll" style={{ height: 48 }} onClick={spend} disabled={left <= 0 || c.hp.current >= c.hp.max}>
-          <Icon name="d20" />Spend a die
-        </button>
-        <button className="gr-btn gr-btn--primary" style={{ height: 48 }} onClick={finish}>Finish rest</button>
+        {d.hitDice.length === 1 && (
+          <button className="gr-btn gr-btn--roll" style={{ height: 48 }} onClick={() => spend(d.hitDice[0].die)} disabled={left <= 0 || c.hp.current >= c.hp.max}>
+            <Icon name="d20" />Spend a die
+          </button>
+        )}
+        <button className="gr-btn gr-btn--primary" style={{ height: 48, ...(d.hitDice.length > 1 ? { gridColumn: '1 / -1' } : {}) }} onClick={finish}>Finish rest</button>
       </div>
     </BottomSheet>
   );
 }
-

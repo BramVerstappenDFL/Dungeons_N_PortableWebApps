@@ -23,7 +23,13 @@ function restRows(before: Character, after: Character): Row[] {
     const avail = (c: Character) => d.slotsMax.reduce((t, m, i) => t + Math.max(0, m - c.spellSlotsUsed[i]), 0);
     rows.push({ label: 'Spell slots', note: 'Every level refills', from: `${avail(before)} / ${slotMax}`, to: `${avail(after)} / ${slotMax}` });
   }
-  rows.push({ label: 'Hit dice', note: 'Regain all spent Hit Dice', from: `${before.level - before.hitDiceUsed} / ${before.level}`, to: `${after.level - after.hitDiceUsed} / ${after.level}` });
+  const pact = d.pact;
+  if (pact) {
+    const left = (c: Character) => Math.max(0, pact.count - (c.pactSlotsUsed ?? 0));
+    rows.push({ label: 'Pact Magic slots', note: `Level ${pact.level} slots refill`, from: `${left(before)} / ${pact.count}`, to: `${left(after)} / ${pact.count}` });
+  }
+  const diceLeft = (c: Character) => derive(c).hitDice.reduce((n, p) => n + p.total - p.used, 0);
+  rows.push({ label: 'Hit dice', note: 'Regain all spent Hit Dice', from: `${diceLeft(before)} / ${before.level}`, to: `${diceLeft(after)} / ${after.level}` });
   rows.push({ label: 'Exhaustion', note: 'Drops by one level', from: `${before.exhaustion}`, to: `${after.exhaustion}` });
   if (before.hp.temp > 0) rows.push({ label: 'Temporary HP', note: 'They fade', from: `${before.hp.temp}`, to: '0' });
   if (before.concentration) rows.push({ label: 'Concentration', note: 'Ends when you sleep', from: 'On', to: 'Off' });

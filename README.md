@@ -7,10 +7,11 @@ A phone-first app (on wider screens it shows as a centered phone column), built 
 - **Sheet**: HP, AC, initiative, speed, proficiency, abilities and save proficiencies, spell slots (tap to spend or restore), Hit Dice and short rest, inspiration and concentration. An accordion of equipped weapons and ready spells with generated banners. Add experience and watch it fly into the XP bar; levelling up grows HP by the class average.
 - **New character**: six animated steps: name, species (10, with lineages and size) and traits; background (16, with origin feat and tool); class (12) with skills and a level-3 path (48 subclasses); standard array or point buy with the 2024 background increases; starting equipment kits and languages; and a review that seals the character. Starting AC comes from the kit's armour. All motion is off under reduced motion.
 - **Levelling**: XP marks a level-up as ready (a gilt button on the sheet), or the DM awards a milestone level from the XP sheet. Each level goes through a short animated flow:
+  - the class: continue one you have, or multiclass into a new one (2024 rules: 13 in the main abilities of every class involved);
   - hit points: the average, or roll the hit die;
   - the class and subclass features gained, and the class resources that grow (Rage, Second Wind, Channel Divinity, Focus, Sorcery Points…);
-  - subclass at level 3 (48 to choose from);
-  - Ability Score Improvement or a feat at the class's levels (Fighter 6 and 14, Rogue 10), and an Epic Boon at 19;
+  - subclass at class level 3 (48 to choose from);
+  - Ability Score Improvement or a feat at the class's levels (Fighter 6 and 14, Rogue 10), and an Epic Boon at class level 19;
   - Fighting Style for Fighters, Paladins and Rangers;
   - new cantrips.
   The last level can be undone. Class features have use pips on the sheet, limited ones appear in combat (Second Wind heals), and rests restore them: a short rest gives back one use of Rage, Channel Divinity, Wild Shape and Second Wind.
@@ -21,8 +22,10 @@ A phone-first app (on wider screens it shows as a centered phone column), built 
 - **Dice**: tap any skill, save or ability check to roll it, build a dice pool with a modifier and advantage or disadvantage, and see recent rolls.
 - **Pack**: coins, carrying weight against Strength × 15, search and filters, equip toggle, SRD weapons, and consumables that roll on use (potions).
 - **Notes**: tagged notes (Session, NPC, Quest, Loot) with search and pins.
-- **Spellbook**: the SRD 5.2.1 spell list for your class; learn spells and choose which are prepared.
+- **Multiclassing**: proficiency bonus from the total level, saving throws from the first class, class features and resources by class level, combined spell slots (half casters round up), Pact Magic slots kept apart and back on a short rest, and Hit Dice per die size.
+- **Spellbook**: the SRD 5.2.1 spell list for each of your classes; learn spells, choose which are prepared, and add custom spells that are not in the SRD.
 - **Characters**: several characters with a switcher (tap the name on the sheet), JSON import and export, and a theme choice.
+- **Import from other apps**: *Import* (in the switcher, or on the new-character screen) also reads `.cah` character files. Classes (with multiclass and subclasses), ability scores, skills, HP, AC, spells, inventory, coins and XP are mapped. Spells that are not in the SRD come in as custom spells, and features, resources and notes go into a pinned note.
 
 ## Development
 ```bash

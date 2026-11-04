@@ -14,6 +14,7 @@ import {
   kitGold, languagesValid, startingArmorClass, suggestedScores, swapScores,
 } from '../rules/create';
 import { Icon } from '../ui/Icon';
+import { importCharacterFile } from '../ui/importFile';
 import { cap, signed, excerpt } from '../ui/format';
 import { reducedMotion } from '../ui/theme';
 import { KitPicker, OriginRow, SealProgress, SourceTag, Tick, WaxSeal } from './create/parts';
@@ -33,6 +34,7 @@ export function CreateScreen() {
   const hasCharacters = useStore((s) => s.characters.length > 0);
   const nav = useNavigate();
   const mainRef = useRef<HTMLElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState(0);
   const [reached, setReached] = useState(0);
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd');
@@ -214,6 +216,18 @@ export function CreateScreen() {
             <h1 className="sub" style={{ margin: 0, font: '600 22px/1.15 var(--font-heading)' }}>New character</h1>
             <span className="muted step-label" key={step}>Step {step + 1} of {STEPS.length} · {STEPS[step]}</span>
           </div>
+          <button className="gr-btn gr-btn--secondary gr-btn--small" style={{ height: 40 }} onClick={() => importRef.current?.click()} aria-label="Import a character file">
+            <Icon name="upload" />Import
+          </button>
+          {/* No accept filter: phones often grey out unknown extensions such as .cah. */}
+          <input ref={importRef} type="file" hidden onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            const r = await importCharacterFile(f);
+            if (r.count) nav('/', { replace: true });
+            window.alert([r.text, ...r.details.map((x) => `• ${x}`)].join('\n'));
+          }} />
         </div>
         <SealProgress steps={STEPS} step={step} reached={reached} onJump={go} />
       </header>

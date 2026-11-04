@@ -1,7 +1,8 @@
 // Class progression numbers (SRD 5.2.1): spells known, class resources and the class features in play.
-import type { Character, EconomySlot } from '../types';
+import type { Ability, Character, ClassLevel, EconomySlot } from '../types';
 import { classById } from '../data';
 import { abilityMod } from './abilities';
+import { multiclassSlots, type PactSlots } from './slots';
 
 export type Recharge = 'short' | 'long' | 'short-one';
 export interface FeatureDef {
@@ -81,21 +82,26 @@ const LABELS: Record<string, (c: Character) => string> = {
 /** Features handled by the level-up flow rather than listed. */
 const HIDDEN = new Set(['ability-score-improvement', 'epic-boon']);
 
-/** Class features the character has at its level, with uses for limited ones. */
+/**
+ * Class features the character has, with uses for limited ones. A multiclassed character gets each
+ * class's features for its level in that class; features of later classes get ids prefixed by the class.
+ */
 export function classFeatures(c: Character): FeatureDef[] {
-  const cls = classById(c.classId);
-  return (cls?.features ?? [])
-    .filter((f) => f.level <= c.level && !HIDDEN.has(f.id))
-    .map((f) => {
-      const key = `${c.classId}:${f.id}`;
-      const r = RESOURCES[key];
-      const max = r?.max(c) ?? 0;
-      const name = r?.label?.(c) ?? LABELS[key]?.(c) ?? f.name;
-      return {
-        id: `class-${f.id}`, name, source: 'Class' as const, text: f.description,
-        ...(r && max > 0 ? { uses: { max, recharge: typeof r.recharge === 'function' ? r.recharge(c) : r.recharge }, slot: r.slot, pool: r.pool } : {}),
-      };
-    });
+  return classLevels(c).flatMap((x, i) => {
+    const view = classView(c, x);
+    return (classById(x.id)?.features ?? [])
+      .filter((f) => f.level <= x.level && !HIDDEN.has(f.id))
+      .map((f) => {
+        const key = `${x.id}:${f.id}`;
+        const r = RESOURCES[key];
+        const max = r?.max(view) ?? 0;
+        const name = r?.label?.(view) ?? LABELS[key]?.(view) ?? f.name;
+        return {
+          id: i === 0 ? `class-${f.id}` : `class-${x.id}-${f.id}`, name, source: 'Class' as const, text: f.description,
+          ...(r && max > 0 ? { uses: { max, recharge: typeof r.recharge === 'function' ? r.recharge(view) : r.recharge }, slot: r.slot, pool: r.pool } : {}),
+        };
+      });
+  });
 }
 
 /** Class features first gained at exactly this level. */
@@ -106,3 +112,85 @@ export const featuresAtLevel = (classId: string, level: number) =>
 export const asiLevels = (classId: string) => classById(classId)?.asiLevels ?? [4, 8, 12, 16];
 /** Classes that pick a Fighting Style, and when. */
 export const FIGHTING_STYLE_LEVEL: Record<string, number> = { fighter: 1, paladin: 2, ranger: 2 };
+
+// ---- Multiclassing (2024 rules) ----
+
+/** Every class with its level; the starting class first. */
+export function classLevels(c: Pick<Character, 'classId' | 'level' | 'subclassId' | 'multiclass'>): ClassLevel[] {
+  const extra = (c.multiclass ?? []).filter((x) => x.level > 0);
+  const taken = extra.reduce((n, x) => n + x.level, 0);
+  return [{ id: c.classId, level: Math.max(1, c.level - taken), ...(c.subclassId ? { subclassId: c.subclassId } : {}) }, ...extra];
+}
+
+/** Levels in one class (0 if the character has none). */
+export const classLevelOf = (c: Character, classId: string) => classLevels(c).find((x) => x.id === classId)?.level ?? 0;
+
+/** The character seen as if it had only this class at its class level (for per-class numbers). */
+export const classView = (c: Character, x: ClassLevel): Character => ({ ...c, classId: x.id, level: x.level, subclassId: x.subclassId, multiclass: undefined });
+
+/** "Wizard", or "Paladin 3 / Warlock 3" when multiclassed. */
+export function classLabel(c: Character): string {
+  const all = classLevels(c);
+  const name = (id: string) => classById(id)?.name ?? id;
+  return all.length === 1 ? name(all[0].id) : all.map((x) => `${name(x.id)} ${x.level}`).join(' / ');
+}
+
+/** The character after taking one more level in a class (a new class starts at level 1). */
+export function withClassLevel(c: Character, classId: string, subclassId?: string): Character {
+  const level = Math.min(20, c.level + 1);
+  if (classId === c.classId) return { ...c, level, subclassId: subclassId ?? c.subclassId };
+  const list = [...(c.multiclass ?? [])];
+  const i = list.findIndex((x) => x.id === classId);
+  const sub = subclassId ?? list[i]?.subclassId;
+  const entry: ClassLevel = { id: classId, level: (list[i]?.level ?? 0) + 1, ...(sub ? { subclassId: sub } : {}) };
+  if (i >= 0) list[i] = entry; else list.push(entry);
+  return { ...c, level, multiclass: list };
+}
+
+/** Classes whose prerequisite is either of their primary abilities rather than all of them. */
+const ANY_PRIMARY = new Set(['fighter']);
+/** Abilities a class needs at 13 or higher to multiclass into or out of it. */
+export function multiclassNeeds(classId: string): { abilities: Ability[]; any: boolean } {
+  return { abilities: classById(classId)?.primary ?? [], any: ANY_PRIMARY.has(classId) };
+}
+const meets = (c: Character, classId: string) => {
+  const { abilities, any } = multiclassNeeds(classId);
+  if (!abilities.length) return true;
+  return any ? abilities.some((a) => c.abilities[a] >= 13) : abilities.every((a) => c.abilities[a] >= 13);
+};
+/** Why the character cannot take a level in a new class, or null if it can (13+ in the primary abilities of every class involved). */
+export function multiclassBlocker(c: Character, classId: string): string | null {
+  if (classLevels(c).some((x) => x.id === classId)) return null;
+  const short = [classId, ...classLevels(c).map((x) => x.id)].filter((id) => !meets(c, id));
+  if (!short.length) return null;
+  const names = (id: string) => {
+    const { abilities, any } = multiclassNeeds(id);
+    return `${classById(id)?.name} needs ${abilities.map((a) => a.toUpperCase()).join(any ? ' or ' : ' and ')} 13`;
+  };
+  return short.map(names).join('; ');
+}
+
+export interface HitDicePool { die: number; total: number; used: number }
+/** Hit Dice grouped by die size, largest first. */
+export function hitDicePools(c: Character): HitDicePool[] {
+  const totals = new Map<number, number>();
+  for (const x of classLevels(c)) {
+    const die = classById(x.id)?.hitDie ?? 8;
+    totals.set(die, (totals.get(die) ?? 0) + x.level);
+  }
+  const used = c.hitDiceUsed ?? {};
+  return [...totals.entries()].sort((a, b) => b[0] - a[0]).map(([die, total]) => ({ die, total, used: Math.min(total, used[die] ?? 0) }));
+}
+
+/** Spellcasting slots (one table, or the multiclass table) and Pact Magic slots, kept apart. */
+export function slotsOf(c: Character): { slots: number[]; pact: PactSlots | null } {
+  return multiclassSlots(classLevels(c).map((x) => ({ casterType: classById(x.id)?.casterType ?? 'none', level: x.level })));
+}
+
+/** Highest spell level the character has slots for (0 = cantrips only). */
+export function topSpellLevel(c: Character): number {
+  const { slots, pact } = slotsOf(c);
+  let top = pact?.level ?? 0;
+  slots.forEach((n, i) => { if (n > 0) top = Math.max(top, i + 1); });
+  return top;
+}

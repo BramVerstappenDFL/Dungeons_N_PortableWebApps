@@ -5,7 +5,6 @@ import {
 import { derive } from '../src/rules/derived';
 import { finishShortRest, longRest } from '../src/rules/rest';
 import { buildCharacter } from '../src/rules/create';
-import { classById } from '../src/data';
 import { migrateCharacter } from '../src/store/characters';
 import { makeCharacter } from './helpers';
 
@@ -70,7 +69,7 @@ describe('feature uses and rests', () => {
   });
   it('short rests restore short-rest features only', () => {
     const c = spendFeature(spendFeature(orc, feature(orc, 'adrenaline-rush')), feature(orc, 'relentless-endurance'));
-    const s = finishShortRest(c, classById('wizard')!);
+    const s = finishShortRest(c);
     expect(s.featureUses).toEqual({ 'relentless-endurance': 1 });
     expect(restoreFeatures(c, 'long').featureUses).toEqual({});
     expect(longRest(c).featureUses).toEqual({});

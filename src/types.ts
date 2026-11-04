@@ -108,8 +108,14 @@ export interface Item {
 }
 export interface Currency { cp: number; sp: number; ep: number; gp: number; pp: number }
 
-/** A known spell. `source` marks spells from a feat (cast with their own `ability`, one free cast per long rest). */
-export interface CharacterSpell { id: string; prepared: boolean; source?: 'feat' | 'lineage'; ability?: Ability }
+/**
+ * A known spell. `source` marks spells from a feat (cast with their own `ability`, one free cast per long rest).
+ * `classId` is the class whose spellcasting ability it uses when multiclassed (default: the first caster class).
+ */
+export interface CharacterSpell { id: string; prepared: boolean; source?: 'feat' | 'lineage'; ability?: Ability; classId?: string }
+
+/** Levels in a class taken by multiclassing, with that class's subclass. */
+export interface ClassLevel { id: string; level: number; subclassId?: string }
 
 export interface RollLogEntry {
   id: string;
@@ -150,16 +156,21 @@ export interface CreationInfo {
 export interface TakenFeat { id: string; level: number; ability?: Ability; note?: string }
 /** One level gained, with what it changed, so it can be undone. */
 export interface LevelRecord {
-  level: number; // the level reached
+  level: number; // the character level reached
+  classId?: string; // the class that took the level (missing = the starting class)
   hp: number; // max HP gained
   rolled?: number; // the hit die roll, if rolled
-  before: Pick<Character, 'abilities' | 'subclassId' | 'skills' | 'expertise' | 'spells' | 'feats' | 'saveProficiencies' | 'speedOverride'>;
+  before: Pick<Character, 'abilities' | 'subclassId' | 'skills' | 'expertise' | 'spells' | 'feats' | 'saveProficiencies' | 'speedOverride' | 'multiclass'>;
 }
 export interface Character {
   id: string;
   name: string;
+  /** The starting class (saving throws, level 1 HP). It has the levels not taken in `multiclass`. */
   classId: string;
+  /** Character level: the total across all classes. */
   level: number;
+  /** Classes added by multiclassing, in the order they were taken. */
+  multiclass?: ClassLevel[];
   speciesId: string;
   backgroundId: string;
   abilities: AbilityScores; // final scores incl. background boosts
@@ -168,12 +179,16 @@ export interface Character {
   armorClass: number;
   speedOverride?: number;
   hp: { max: number; current: number; temp: number };
-  hitDiceUsed: number;
+  /** Spent Hit Dice by die size, e.g. { 10: 1, 8: 2 }. */
+  hitDiceUsed: Record<number, number>;
   deathSaves: { successes: number; failures: number };
   exhaustion: number;
   conditions: string[];
-  spellSlotsUsed: number[]; // index 0 = level 1 slots used (pact slots for warlocks)
+  spellSlotsUsed: number[]; // index 0 = level 1 slots used (Spellcasting slots)
+  pactSlotsUsed?: number; // Warlock Pact Magic slots used
   spells: CharacterSpell[];
+  /** Spells not in the SRD list, kept on the character (ids start with "custom-"). */
+  customSpells?: Spell[];
   concentration: string | null; // spell id
   inventory: Item[];
   currency: Currency;
@@ -185,7 +200,7 @@ export interface Character {
   creation?: CreationInfo;
   lineageId?: string;
   size?: Size;
-  subclassId?: string; // chosen path; the subclass itself starts at level 3
+  subclassId?: string; // chosen path of the starting class; the subclass itself starts at class level 3
   originFeat?: string; // feat id, with an optional note such as "Wizard"
   originFeatNote?: string;
   languages?: string[];

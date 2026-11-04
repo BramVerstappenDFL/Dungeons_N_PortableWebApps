@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Character, CharacterSpell, EconomySlot, Spell } from '../types';
-import { weaponById } from '../data';
+import { classById, weaponById } from '../data';
+import { classLabel, classLevelOf } from '../rules/classes';
 import { useStore } from '../store/characters';
 import { derive } from '../rules/derived';
 import { endTurn, newCombat, pickSlot, setUsed, slotForCastingTime, spendSlot } from '../rules/combat';
@@ -27,7 +28,7 @@ export function CombatScreen({ c }: { c: Character }) {
   const update = useStore((s) => s.update);
   const roll = useStore((s) => s.roll);
   const d = derive(c);
-  const spells = useSpells();
+  const spells = useSpells(c);
   const overlay = useRollOverlay();
   const [tab, setTab] = useState<EconomySlot>('action');
   const mainRef = useRef<HTMLElement>(null);
@@ -57,18 +58,25 @@ export function CombatScreen({ c }: { c: Character }) {
   };
 
   const cast = (s: Spell, cs: CharacterSpell, slot: EconomySlot) => {
-    const k = castingFor(c, cs, d.spellAbility);
+    const k = castingFor(c, cs, d.classCasting(cs).ability);
     // Feat and lineage spells: one free cast per long rest, then slots if the class has them.
     const free = s.level > 0 && hasFreeCast(c, cs);
-    const level = free ? s.level : pickSlot(s.level, c.spellSlotsUsed, d.slotsMax);
+    // Pact Magic slots: used for Warlock spells first, or when no other slot is left.
+    const pactLeft = d.pact ? Math.max(0, d.pact.count - (c.pactSlotsUsed ?? 0)) : 0;
+    const pactOk = !free && s.level > 0 && !!d.pact && pactLeft > 0 && d.pact.level >= s.level;
+    const warlockSpell = classById(d.classCasting(cs).classId ?? '')?.casterType === 'pact';
+    const regular = free ? s.level : pickSlot(s.level, c.spellSlotsUsed, d.slotsMax);
+    const usePact = pactOk && (warlockSpell || regular === null);
+    const level = usePact ? d.pact!.level : regular;
     if (level === null) {
       overlay.show({ kicker: s.name, total: '0', title: cs.source ? 'Free cast used' : `No ${ordinal(s.level)}-level slots left`, calc: cs.source ? 'It comes back after a long rest.' : 'Take a rest, or tap a used slot on the sheet to restore it.' }, []);
       return;
     }
-    const slotText = free ? 'free cast, back after a long rest' : level > 0 ? `uses a ${ordinal(level)}-level slot` : 'cantrip';
+    const slotText = free ? 'free cast, back after a long rest' : usePact ? `uses a ${ordinal(level)}-level Pact Magic slot` : level > 0 ? `uses a ${ordinal(level)}-level slot` : 'cantrip';
     set((x) => ({
       ...x,
-      spellSlotsUsed: free ? x.spellSlotsUsed : spendSlot(x.spellSlotsUsed, level),
+      spellSlotsUsed: free || usePact ? x.spellSlotsUsed : spendSlot(x.spellSlotsUsed, level),
+      pactSlotsUsed: usePact ? (x.pactSlotsUsed ?? 0) + 1 : x.pactSlotsUsed,
       featureUses: free ? { ...x.featureUses, [freeCastKey(s.id)]: 1 } : x.featureUses,
       concentration: s.concentration ? s.id : x.concentration,
     }));
@@ -105,7 +113,7 @@ export function CombatScreen({ c }: { c: Character }) {
   }, [spells, c]);
 
   const spellAction = ({ s, cs }: { s: Spell; cs: CharacterSpell }, slot: EconomySlot): Action => {
-    const k = castingFor(c, cs, d.spellAbility);
+    const k = castingFor(c, cs, d.classCasting(cs).ability);
     const r = spellRolls(s, Math.max(1, s.level), c.level, k.mod)[0];
     const facts: [string, string][] = [['Level', ordinal(s.level)], ['Range', s.range]];
     if (s.attack) facts.push(['To hit', signed(k.attack)]);
@@ -160,8 +168,8 @@ export function CombatScreen({ c }: { c: Character }) {
         }),
       };
     }
-    if (f.id === 'class-second-wind') {
-      const expr = `1d10+${c.level}`;
+    if (f.id === 'class-second-wind' || f.id === 'class-fighter-second-wind') {
+      const expr = `1d10+${classLevelOf(c, 'fighter')}`;
       return {
         key: `${slot}-${f.id}`, name: f.name, level: 1, kind: f.source, verb: 'Catch your breath',
         short: `Heal ${prettyExpr(expr)} · ${left} left`,
@@ -243,7 +251,7 @@ export function CombatScreen({ c }: { c: Character }) {
               <span className="gr-token" style={{ '--tincture': 'var(--tincture-4)' } as CSSProperties}>{c.name.charAt(0).toUpperCase()}</span>
               <span className="gr-init__who">
                 <span className="gr-init__name">{c.name}</span>
-                <span className="gr-init__sub">You · {d.cls?.name}</span>
+                <span className="gr-init__sub">You · {classLabel(c)}</span>
               </span>
               <span className="gr-init__hp">{c.hp.current}/{c.hp.max}</span>
               <span className="gr-init__n">{c.combat.initiative ?? '—'}</span>

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Ability, Character } from '../types';
-import { FEATS, featById, subclassById, subclassesFor } from '../data';
+import { CLASSES, FEATS, classById, featById, subclassById, subclassesFor } from '../data';
+import { classLevelOf, multiclassBlocker, multiclassNeeds } from '../rules/classes';
 import { useStore } from '../store/characters';
 import { ABILITIES, ABILITY_NAMES, SKILLS, abilityMod, skillName } from '../rules/abilities';
 import {
-  MAX_LEVEL, applyAsi, applyLevelUp, asiComplete, levelUpPlan, pendingLevels, type AsiChoice, type LevelUpChoices,
+  MAX_LEVEL, applyAsi, applyLevelUp, asiComplete, levelUpPlan, pendingLevels, subclassOf, type AsiChoice, type LevelUpChoices,
 } from '../rules/progression';
 import { derive } from '../rules/derived';
 import { Icon } from '../ui/Icon';
@@ -18,9 +19,9 @@ import { OriginRow, SealProgress, SourceTag, Tick, WaxSeal } from './create/part
 import './create.css';
 import './levelup.css';
 
-type StepId = 'hp' | 'subclass' | 'features' | 'asi' | 'style' | 'cantrips' | 'review';
+type StepId = 'class' | 'hp' | 'subclass' | 'features' | 'asi' | 'style' | 'cantrips' | 'review';
 const STEP_NAMES: Record<StepId, string> = {
-  hp: 'Hit points', subclass: 'Subclass', features: 'New features', asi: 'Improvement', style: 'Fighting style', cantrips: 'Cantrips', review: 'Review',
+  class: 'Class', hp: 'Hit points', subclass: 'Subclass', features: 'New features', asi: 'Improvement', style: 'Fighting style', cantrips: 'Cantrips', review: 'Review',
 };
 
 /** Remounts for each level, so a character with several levels ready goes through them one by one. */
@@ -37,8 +38,17 @@ function LevelUpScreen({ c }: { c: Character }) {
   const mainRef = useRef<HTMLElement>(null);
   const d = derive(c);
 
+  // The class that takes this level: one the character has, or a new one (multiclassing).
+  const [classId, setClassId] = useState(c.classId);
   const [subclassId, setSubclassId] = useState<string | undefined>(c.subclassId);
-  const plan = levelUpPlan(c, subclassId);
+  const plan = levelUpPlan(c, subclassId, classId);
+  const cls = classById(classId);
+  const pickClass = (id: string) => {
+    setClassId(id);
+    setSubclassId(subclassOf(c, id));
+    // Choices made for another class no longer apply.
+    setHp(undefined); setStyle(undefined); setCantrips([]); setPlus2(undefined); setPlus1([]); setFeatId(undefined);
+  };
   const [hp, setHp] = useState<LevelUpChoices['hp'] | undefined>();
   const [asiKind, setAsiKind] = useState<AsiChoice['kind']>(plan.epicBoon ? 'feat' : 'plus2');
   const [plus2, setPlus2] = useState<Ability | undefined>();
@@ -55,7 +65,7 @@ function LevelUpScreen({ c }: { c: Character }) {
   const [sealing, setSealing] = useState(false);
 
   const steps: StepId[] = [
-    'hp', ...(plan.subclass ? ['subclass' as const] : []), 'features',
+    'class', 'hp', ...(plan.subclass ? ['subclass' as const] : []), 'features',
     ...(plan.asi || plan.epicBoon ? ['asi' as const] : []), ...(plan.fightingStyle ? ['style' as const] : []),
     ...(plan.newCantrips ? ['cantrips' as const] : []), 'review',
   ];
@@ -67,14 +77,14 @@ function LevelUpScreen({ c }: { c: Character }) {
       : asiKind === 'plus1' ? (plus1.length === 2 ? { kind: 'plus1', abilities: [plus1[0], plus1[1]] } : undefined)
         : featId ? { kind: 'feat', featId, ability: featAbility, skill, expertise } : undefined;
   const choices: LevelUpChoices = {
-    hp: hp ?? { mode: 'average' }, subclassId, asi, fightingStyle: style, cantrips,
+    hp: hp ?? { mode: 'average' }, classId, subclassId, asi, fightingStyle: style, cantrips,
   };
-  const preview = useMemo(() => applyLevelUp(c, choices), [c, hp, subclassId, asiKind, plus2, plus1, featId, featAbility, skill, expertise, style, cantrips]); // eslint-disable-line react-hooks/exhaustive-deps
+  const preview = useMemo(() => applyLevelUp(c, choices), [c, hp, classId, subclassId, asiKind, plus2, plus1, featId, featAbility, skill, expertise, style, cantrips]); // eslint-disable-line react-hooks/exhaustive-deps
   const after = derive(preview);
   const scores = applyAsi(c.abilities, plan.asi || plan.epicBoon ? asi : undefined);
 
   const valid: Record<StepId, boolean> = {
-    hp: !!hp, subclass: !!subclassId, features: true, asi: asiComplete(asi), style: !!style,
+    class: !multiclassBlocker(c, classId), hp: !!hp, subclass: !!subclassId, features: true, asi: asiComplete(asi), style: !!style,
     cantrips: cantrips.length === plan.newCantrips, review: true,
   };
   const go = (to: number) => { setDir(to > step ? 'fwd' : 'back'); setStep(to); setReached((r) => Math.max(r, to)); };
@@ -116,7 +126,9 @@ function LevelUpScreen({ c }: { c: Character }) {
     .sort((a, b) => (a.category === 'epic-boon' ? -1 : 0) - (b.category === 'epic-boon' ? -1 : 0) || a.name.localeCompare(b.name));
   const feat = featById(featId);
   const styles = FEATS.filter((f) => f.category === 'fighting-style' && !taken.has(f.id));
-  const cantripPool = (spells ?? []).filter((s) => s.level === 0 && s.classes.includes(c.classId) && !c.spells.some((k) => k.id === s.id));
+  const cantripPool = (spells ?? []).filter((s) => s.level === 0 && s.classes.includes(classId) && !c.spells.some((k) => k.id === s.id));
+  const mine = d.classes.map((x) => x.id);
+  const others = CLASSES.filter((k) => !mine.includes(k.id));
   const cap20 = (a: Ability) => c.abilities[a] >= (feat?.category === 'epic-boon' ? 30 : 20);
 
   return (
@@ -126,7 +138,7 @@ function LevelUpScreen({ c }: { c: Character }) {
           <Link to="/" className="gr-btn gr-btn--secondary gr-btn--icon ico-btn" aria-label="Close"><Icon name="close" /></Link>
           <div className="col" style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <h1 className="sub" style={{ margin: 0, font: '600 22px/1.15 var(--font-heading)' }}>Level {plan.level}</h1>
-            <span className="muted step-label" key={step}>{c.name} · {d.cls?.name} · Step {step + 1} of {steps.length} · {STEP_NAMES[id]}</span>
+            <span className="muted step-label" key={step}>{c.name} · {cls?.name} {plan.classLevel} · Step {step + 1} of {steps.length} · {STEP_NAMES[id]}</span>
           </div>
           <span className="lvl-badge" aria-hidden="true"><span className="num">{plan.level}</span></span>
         </div>
@@ -135,6 +147,45 @@ function LevelUpScreen({ c }: { c: Character }) {
 
       <main ref={mainRef} className="scroll" style={{ padding: '20px 16px 28px' }}>
         <div key={step} className={`page page--${dir}`}>
+          {id === 'class' && (
+            <>
+              <div className="gr-notice gr-hint rise" style={{ '--i': 0 } as CSSProperties}>
+                <Icon name="star" />
+                <span><b>Which class grows?</b>Take level {plan.level} in a class you have, or multiclass into a new one.</span>
+              </div>
+              <div className="grid2" role="radiogroup" aria-label="Class">
+                {d.classes.map((x, i) => (
+                  <button key={x.id} role="radio" aria-checked={classId === x.id} className={classId === x.id ? 'cls is-on rise' : 'cls rise'}
+                    style={{ '--i': i + 1, '--tincture': `var(--tincture-${(i % 6) + 1})` } as CSSProperties} onClick={() => pickClass(x.id)}>
+                    <span style={{ font: '600 16px/1.2 var(--font-heading)' }}>{classById(x.id)?.name}</span>
+                    <span className="muted">Level {x.level} → {x.level + 1}</span>
+                  </button>
+                ))}
+              </div>
+              {others.length > 0 && (
+                <>
+                  <span className="gr-label rise" style={{ '--i': 3 } as CSSProperties}>Multiclass</span>
+                  <span className="muted">You need 13 or more in the main abilities of your classes and the new one.</span>
+                  <div className="grid2" role="radiogroup" aria-label="New class">
+                    {others.map((k, i) => {
+                      const blocked = multiclassBlocker(c, k.id);
+                      const need = multiclassNeeds(k.id);
+                      return (
+                        <button key={k.id} role="radio" aria-checked={classId === k.id} disabled={!!blocked}
+                          className={classId === k.id ? 'cls is-on rise' : 'cls rise'} title={blocked ?? undefined}
+                          style={{ '--i': i + 4, '--tincture': `var(--tincture-${((i + 2) % 6) + 1})` } as CSSProperties} onClick={() => pickClass(k.id)}>
+                          <span style={{ font: '600 16px/1.2 var(--font-heading)' }}>{k.name}</span>
+                          <span className="muted">{blocked ? `Needs ${need.abilities.map((a) => a.toUpperCase()).join(need.any ? ' or ' : ' and ')} 13` : `d${k.hitDie} · new class`}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {multiclassBlocker(c, classId) && <span className="muted">{multiclassBlocker(c, classId)}.</span>}
+                </>
+              )}
+            </>
+          )}
+
           {id === 'hp' && (
             <>
               <div className="panel panel--sm row rise" style={{ gap: 12, padding: 12, '--i': 0 } as CSSProperties}>
@@ -173,15 +224,15 @@ function LevelUpScreen({ c }: { c: Character }) {
             <>
               <div className="gr-notice gr-hint rise" style={{ '--i': 0 } as CSSProperties}>
                 <Icon name="star" />
-                <span><b>Choose your {d.cls?.name.toLowerCase()} subclass</b>It shapes your features from now on.</span>
+                <span><b>Choose your {cls?.name.toLowerCase()} subclass</b>It shapes your features from now on.</span>
               </div>
               <div className="grid2">
-                {subclassesFor(c.classId).map((s, i) => (
+                {subclassesFor(classId).map((s, i) => (
                   <button key={s.id} className={s.id === subclassId ? 'cls is-on rise' : 'cls rise'} aria-pressed={s.id === subclassId}
                     style={{ '--i': i + 1, '--tincture': `var(--tincture-${(i % 6) + 1})` } as CSSProperties} onClick={() => setSubclassId(s.id)}>
                     <span style={{ font: '600 16px/1.2 var(--font-heading)' }}>{s.name}</span>
                     <SourceTag source={s.source} />
-                    {c.subclassId === s.id && <span className="muted">Chosen at creation</span>}
+                    {subclassOf(c, classId) === s.id && <span className="muted">Chosen earlier</span>}
                   </button>
                 ))}
               </div>
@@ -203,6 +254,8 @@ function LevelUpScreen({ c }: { c: Character }) {
                     ...plan.resources.map((r) => [r.name, `${r.from} → ${r.to}`]),
                     ...(plan.slots[1].some((n, i) => n !== plan.slots[0][i])
                       ? [['Spell slots', plan.slots[1].map((n, i) => (n ? `${ordinal(i + 1)} ×${n}` : '')).filter(Boolean).join(', ')]] : []),
+                    ...(plan.pact[1] && (plan.pact[1].count !== plan.pact[0]?.count || plan.pact[1].level !== plan.pact[0]?.level)
+                      ? [['Pact Magic', `${plan.pact[1].count} slots of ${ordinal(plan.pact[1].level)} level`]] : []),
                     ...(plan.prepared[1] !== plan.prepared[0] ? [['Prepared', `${plan.prepared[0]} → ${plan.prepared[1]} spells`]] : []),
                     ...(after.attacks !== d.attacks ? [['Attacks', `${d.attacks} → ${after.attacks} per Attack action`]] : []),
                   ].map(([k, v], i) => (
@@ -210,8 +263,11 @@ function LevelUpScreen({ c }: { c: Character }) {
                   ))}
                 </dl>
               </section>
+              {plan.newClass && (
+                <div className="gr-notice gr-hint"><Icon name="info" /><span><b>New class: {cls?.name}</b>Multiclassing gives some of its proficiencies but not its saving throws. Check the Player&rsquo;s Handbook for which ones.</span></div>
+              )}
               <div className="olist">
-                {[...plan.classFeatures.map((f) => ({ ...f, from: d.cls?.name ?? 'Class' })), ...plan.pathFeatures.map((f) => ({ ...f, from: subclassById(subclassId)?.name ?? 'Subclass' }))]
+                {[...plan.classFeatures.map((f) => ({ ...f, from: cls?.name ?? 'Class' })), ...plan.pathFeatures.map((f) => ({ ...f, from: subclassById(subclassId)?.name ?? 'Subclass' }))]
                   .map((f, i) => <FeatureRow key={f.id} index={i + 1} name={f.name} from={f.from} text={f.description} />)}
               </div>
               {!plan.classFeatures.length && !plan.pathFeatures.length && (
@@ -303,7 +359,7 @@ function LevelUpScreen({ c }: { c: Character }) {
             <>
               <div className="gr-notice gr-hint rise" style={{ '--i': 0 } as CSSProperties}>
                 <Icon name="swords" />
-                <span><b>Fighting Style</b>{c.classId === 'fighter' && c.level >= 1 && plan.level > 1 ? 'Fighters get one at level 1; pick yours now.' : 'Pick the way you fight.'}</span>
+                <span><b>Fighting Style</b>{classId === 'fighter' && classLevelOf(c, 'fighter') >= 1 && plan.classLevel > 1 ? 'Fighters get one at level 1; pick yours now.' : 'Pick the way you fight.'}</span>
               </div>
               <div className="olist">
                 {styles.map((f, i) => (
@@ -343,7 +399,7 @@ function LevelUpScreen({ c }: { c: Character }) {
                 <div className="gr-window__head"><i className="gr-window__mark" /><div className="gr-window__title"><span>{c.name}, level {plan.level}</span></div></div>
                 <div className="gr-window__body" style={{ position: 'relative' }}>
                   <WaxSeal className="wax--review" />
-                  <span style={{ fontSize: 16, paddingRight: 56 }}>{d.cls?.name}{subclassId ? ` · ${subclassById(subclassId)?.name}` : ''}</span>
+                  <span style={{ fontSize: 16, paddingRight: 56 }}>{cls?.name} {plan.classLevel}{subclassId ? ` · ${subclassById(subclassId)?.name}` : ''}{plan.newClass ? ' (new class)' : ''}</span>
                   <div className="grid3">
                     {([['HP', c.hp.max, preview.hp.max], ['Prof', d.pb, after.pb], ['AC', d.ac, after.ac]] as const).map(([k, from, to], i) => (
                       <div key={k} className="stat flip" style={{ background: 'var(--bg)', '--i': i } as CSSProperties}>

@@ -1,7 +1,9 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Character } from '../types';
-import { classById, originName } from '../data';
+import { originName } from '../data';
+import { classLabel } from '../rules/classes';
+import { importCharacterFile } from '../ui/importFile';
 import { useStore } from '../store/characters';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Icon } from '../ui/Icon';
@@ -11,11 +13,11 @@ const TINTS = ['var(--tincture-4)', 'var(--tincture-1)', 'var(--tincture-5)', 'v
 
 /** Character list, new character, import/export, delete and theme, opened from the sheet header. */
 export function CharacterSwitcher({ onClose }: { onClose: () => void }) {
-  const { characters, activeId, select, remove, importMany, setTheme, theme: chosen } = useStore();
+  const { characters, activeId, select, remove, setTheme, theme: chosen } = useStore();
   const theme = useTheme();
   const nav = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ text: string; details?: string[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const active = characters.find((c) => c.id === activeId) ?? characters[0];
 
@@ -29,13 +31,8 @@ export function CharacterSwitcher({ onClose }: { onClose: () => void }) {
   };
   const onImport = async (f: File | undefined) => {
     if (!f) return;
-    try {
-      const data = JSON.parse(await f.text());
-      const n = importMany(Array.isArray(data) ? data : [data]);
-      setMsg(n ? `Imported ${n} character${n === 1 ? '' : 's'}.` : 'No characters found in that file.');
-    } catch {
-      setMsg('That file is not a character export.');
-    }
+    const r = await importCharacterFile(f);
+    setMsg({ text: r.text, details: r.details });
   };
 
   return (
@@ -47,7 +44,7 @@ export function CharacterSwitcher({ onClose }: { onClose: () => void }) {
             <span className="gr-token" style={{ '--tincture': TINTS[i % TINTS.length], width: 40, height: 40, fontSize: 18 } as CSSProperties}>{c.name.charAt(0).toUpperCase()}</span>
             <span className="col" style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <span style={{ fontWeight: 700, fontSize: 16 }}>{c.name}</span>
-              <span className="muted">Level {c.level} · {originName(c.speciesId, c.lineageId)} {classById(c.classId)?.name.toLowerCase()}</span>
+              <span className="muted">Level {c.level} · {originName(c.speciesId, c.lineageId)} {classLabel(c).toLowerCase()}</span>
             </span>
             {c.id === active?.id && <Icon name="check" />}
           </button>
@@ -70,9 +67,19 @@ export function CharacterSwitcher({ onClose }: { onClose: () => void }) {
       <div className="grid2">
         <button className="gr-btn gr-btn--secondary" style={{ height: 44 }} onClick={exportAll}><Icon name="download" />Export</button>
         <button className="gr-btn gr-btn--secondary" style={{ height: 44 }} onClick={() => fileRef.current?.click()}><Icon name="upload" />Import</button>
-        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { onImport(e.target.files?.[0]); e.target.value = ''; }} />
+        {/* No accept filter: phones often grey out unknown extensions such as .cah. */}
+        <input ref={fileRef} type="file" hidden onChange={(e) => { onImport(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
-      {msg && <div className="gr-notice gr-hint" role="status"><Icon name="info" /><span>{msg}</span></div>}
+      <span className="muted">Import reads D&amp;D Assist exports and .cah character files from other apps.</span>
+      {msg && (
+        <div className="gr-notice gr-hint" role="status">
+          <Icon name="info" />
+          <span>
+            {msg.text}
+            {msg.details?.map((m) => <span key={m} style={{ display: 'block', marginTop: 4 }}>• {m}</span>)}
+          </span>
+        </div>
+      )}
 
       {active && (confirmDelete ? (
         <div className="gr-notice gr-error">
