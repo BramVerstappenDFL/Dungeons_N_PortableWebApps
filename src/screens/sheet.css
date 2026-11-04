@@ -1,0 +1,57 @@
+.slot { width: 26px; height: 26px; box-sizing: border-box; padding: 0; border: 2px solid var(--ink); background: var(--amethyst); cursor: pointer; }
+.slot.used { background: transparent; border-style: dashed; }
+.slot:hover { box-shadow: var(--shadow-sm); }
+.slotrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lvlf { font: inherit; cursor: pointer; min-height: 36px; }
+.lvlf:hover { background: var(--accent-100); }
+.lvlf.is-on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.namebtn { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.namebtn:hover h1 { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.chipbtn { font: inherit; cursor: pointer; }
+.chipbtn.gr-chip--off { opacity: .8; }
+
+/* Experience */
+.xpbar { flex: 1; height: 14px; box-sizing: border-box; padding: 2px; border: 2px solid var(--ink); background: var(--neutral-300); }
+.xpbar__fill { height: 100%; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), var(--ink) calc(10% - 2px) 10%), var(--verdant-500); transition: width .12s linear; }
+.xpbar.is-gaining { animation: xp-pulse .2s steps(2) 6; }
+@keyframes xp-pulse { 0% { box-shadow: 0 0 0 2px var(--gilt); } 100% { box-shadow: none; } }
+.xpbar.is-levelup .xpbar__fill { animation: lvl-flash .5s steps(2) 4; }
+@keyframes lvl-flash { 0% { background-color: var(--gilt); } 100% { background-color: var(--verdant-500); } }
+.lvl-pop { animation: lvl-pop .5s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes lvl-pop { from { transform: scale(1.8); opacity: 0; } to { transform: none; opacity: 1; } }
+.gain-tag { animation: lvl-pop .3s cubic-bezier(.2,.8,.2,1) both; }
+.xp-orb { position: absolute; left: 0; top: 0; width: var(--sz); height: var(--sz); margin: calc(var(--sz) / -2) 0 0 calc(var(--sz) / -2); box-shadow: inset 2px 2px 0 color-mix(in srgb, #fff 60%, transparent), inset -2px -2px 0 color-mix(in srgb, var(--verdant-900) 45%, transparent), 0 0 0 2px var(--ink); animation: orb-fly 1.15s cubic-bezier(.55,0,.35,1) var(--dl) both, orb-hue .24s steps(1) infinite; }
+@keyframes orb-fly { 0% { transform: translate(var(--sx), var(--sy)) scale(0); } 14% { transform: translate(var(--sx), calc(var(--sy) - 22px)) scale(1.2); } 28% { transform: translate(var(--sx), calc(var(--sy) - 6px)) scale(1); } 42% { transform: translate(var(--sx), calc(var(--sy) - 14px)) scale(1); } 92% { transform: translate(var(--tx), var(--ty)) scale(.6); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(.2); opacity: 0; } }
+@keyframes orb-hue { 0% { background: color-mix(in srgb, var(--verdant-500) 65%, var(--gilt)); } 50% { background: color-mix(in srgb, var(--verdant-500) 20%, var(--gilt)); } }
+.xpchip { font: inherit; cursor: pointer; min-height: 40px; flex: 1; justify-content: center; }
+.xpchip:hover { background: var(--accent-100); }
+.charrow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 8px 12px; box-sizing: border-box; font: inherit; color: var(--ink); text-align: left; background: var(--paper); border: 0; border-top: 2px solid var(--ink); cursor: pointer; }
+.charrow:first-child { border-top: 0; }
+.charrow:hover { background: var(--accent-100); }
+.charrow.is-on { background: var(--accent-100); }
+@media (prefers-reduced-motion: reduce) { .xpbar.is-gaining, .xpbar.is-levelup .xpbar__fill, .lvl-pop, .gain-tag { animation: none; } .xpbar__fill { transition: none; } }
+.origin-facts { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 10px 12px; background: var(--paper); border: 2px solid var(--ink); box-shadow: var(--shadow-sm); }
+.origin-facts > div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: baseline; }
+.origin-facts dt { font-size: 11px; }
+.origin-facts dd { margin: 0; font-size: 14.5px; }
+.feats { display: flex; flex-direction: column; }
+.feat { padding: 10px 12px 10px 14px; border-top: 2px solid var(--ink); border-left: 5px solid var(--tincture, var(--accent)); }
+.feat:first-child { border-top: 0; }
+.feat details > summary { display: flex; align-items: baseline; gap: 8px; cursor: pointer; list-style: none; }
+.feat details > summary::-webkit-details-marker { display: none; }
+.feat details > summary::before { content: ''; flex: none; width: 7px; height: 7px; border: 2px solid var(--ink); border-left: 0; border-top: 0; transform: rotate(-45deg); transition: transform .2s cubic-bezier(.2,.8,.2,1); align-self: center; }
+.feat details[open] > summary::before { transform: rotate(45deg); }
+.feat__name { flex: 1; font-weight: 700; }
+.feat__src { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.feat__text { margin: 8px 0 0; font-size: 14.5px; line-height: 1.45; animation: cr-feat-open .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes cr-feat-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.feat__uses { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.pips { display: flex; gap: 8px; }
+.pip { width: 20px; height: 20px; padding: 0; border: 2px solid var(--ink); background: var(--gilt); box-shadow: var(--shadow-sm); transform: rotate(45deg) scale(.8); cursor: pointer; transition: background .18s, box-shadow .18s, transform .18s cubic-bezier(.2,.8,.2,1); }
+.pip.spent { background: var(--neutral-300); box-shadow: none; transform: rotate(45deg) scale(.7) translate(1px, 1px); }
+.pip:active { transform: rotate(45deg) scale(.6); }
+@media (prefers-reduced-motion: reduce) { .feat__text, .pip, .feat details > summary::before { animation: none; transition: none; } }
+.lvl-ready { flex: none; text-decoration: none; animation: lvl-glow 2.4s cubic-bezier(.2,.8,.2,1) infinite; }
+.lvl-ready.lvl-pop { animation: lvl-pop .5s cubic-bezier(.2,.8,.2,1) both, lvl-glow 2.4s cubic-bezier(.2,.8,.2,1) .5s infinite; }
+@keyframes lvl-glow { 0%, 70%, 100% { box-shadow: var(--shadow-gilt); } 35% { box-shadow: 5px 5px 0 var(--gilt); } }
+@media (prefers-reduced-motion: reduce) { .lvl-ready, .lvl-ready.lvl-pop { animation: none; } }

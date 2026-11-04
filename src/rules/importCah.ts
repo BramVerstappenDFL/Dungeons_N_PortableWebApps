@@ -1,7 +1,8 @@
-import type { Ability, AbilityScores, Character, CharacterSpell, ClassLevel, Item, Spell } from '../types';
-import { BACKGROUNDS, CLASSES, SPECIES } from '../data';
+import type { Ability, AbilityScores, ArmorInfo, Character, CharacterSpell, ClassLevel, Item, Note, Spell } from '../types';
+import { BACKGROUNDS, CLASSES, SPECIES, WEAPONS, armorByName, classById, subclassesFor } from '../data';
 import { ABILITIES, ABILITY_NAMES, SKILLS, abilityMod } from './abilities';
-import { multiclassMaxHp } from './classes';
+import { armorClassFrom } from './origin';
+import { newCombat } from './combat';
 
 /*
  * Converts a character exported as a `.cah` file (JSON with `jsonType: "character"`) by another
@@ -60,7 +61,8 @@ export function cahSpellToCustom(s: Obj, id: string): Spell {
     level,
     school: str(s.school).toLowerCase() || 'evocation',
     classes: [...new Set(knownClasses)],
-    castingTime: str(s.castingTime),
+    // "1 bonus action" → "Bonus Action", as in the 2024 SRD.
+    castingTime: str(s.castingTime).replace(/^1\s+(bonus action|action|reaction)/i, (_, t: string) => t.replace(/\b\w/g, (m) => m.toUpperCase())),
     range: str(s.range),
     components,
     duration,
@@ -84,35 +86,35 @@ export function cahSpellToCustom(s: Obj, id: string): Spell {
   return spell;
 }
 
-/** AC from equipped armor and shield, the 2024 way: light adds DEX, medium up to +2, heavy none. */
-function armorClass(d: Obj, dexMod: number): number {
-  const equipped = arr(d.armors).filter((a) => a.equipped);
-  const isShield = (a: Obj) => /shield/i.test(str(a.category)) || /shield/i.test(str(a.name));
-  const body = equipped.find((a) => !isShield(a));
-  const shield = equipped.find(isShield);
-  let ac: number;
-  if (body) {
-    const cat = str(body.category).toLowerCase();
-    const dex = cat.includes('heavy') ? 0 : cat.includes('medium') ? Math.min(2, dexMod) : dexMod;
-    ac = num(body.armor, 10) + dex;
-  } else {
-    ac = num(d.baseAc, 10) + dexMod;
-  }
-  if (shield) ac += num(shield.armor, 2);
-  return ac + num(d.extraAC);
+/** Armour data for an exported armour: its category ("Heavy Armor", "Shield") and AC. */
+function armorInfo(a: Obj): ArmorInfo | undefined {
+  const cat = `${str(a.category)} ${str(a.name)}`.toLowerCase();
+  const known = armorByName(str(a.name));
+  const category: ArmorInfo['category'] | undefined =
+    cat.includes('shield') ? 'shield' : cat.includes('heavy') ? 'heavy' : cat.includes('medium') ? 'medium' : cat.includes('light') ? 'light' : known?.category;
+  if (!category) return undefined;
+  return { category, ac: num(a.armor, known?.ac ?? (category === 'shield' ? 2 : 10)) };
 }
 
 function inventory(d: Obj, makeId: () => string): Item[] {
   const items: Item[] = [];
   for (const a of arr(d.armors)) {
     const bits = [str(a.category), a.armor ? `AC ${a.armor}` : '', a.stealthDisadvantage ? 'Stealth disadvantage' : '', a.strRequired ? `Str ${a.strRequired}` : '', str(a.description)];
-    items.push({ id: makeId(), name: str(a.name) || 'Armor', qty: 1, weight: parseWeight(a.weight), notes: bits.filter(Boolean).join(' · '), equipped: !!a.equipped });
+    const armor = armorInfo(a);
+    items.push({
+      id: makeId(), name: str(a.name) || 'Armor', qty: 1, weight: parseWeight(a.weight), notes: bits.filter(Boolean).join(' · '),
+      equipped: !!a.equipped, kind: 'gear', ...(armor ? { armor } : {}),
+    });
   }
   for (const w of arr(d.weapons)) {
     const dice = w.damageDiceAmount && str(w.damageDiceName) ? `${w.damageDiceAmount}${str(w.damageDiceName)}` : '';
     const dmg = [dice + (num(w.bonus) ? ` +${num(w.bonus)}` : ''), str(w.damageTypeName).toLowerCase()].filter(Boolean).join(' ');
     const bits = [dmg, str(w.properties), w.isRanged && w.normalRange ? `range ${w.normalRange}/${w.maxRange}` : '', str(w.description)];
-    items.push({ id: makeId(), name: str(w.name) || 'Weapon', qty: 1, weight: parseWeight(w.weight), notes: bits.filter(Boolean).join(' · '), equipped: w.equipped !== false });
+    const srd = WEAPONS.find((x) => norm(x.name) === norm(str(w.name)));
+    items.push({
+      id: makeId(), name: str(w.name) || 'Weapon', qty: 1, weight: parseWeight(w.weight) || srd?.weight || 0, notes: bits.filter(Boolean).join(' · '),
+      equipped: w.equipped !== false, kind: 'weapon', ...(srd ? { weaponId: srd.id } : {}),
+    });
   }
   for (const e of arr(d.equipment)) {
     items.push({
@@ -122,22 +124,19 @@ function inventory(d: Obj, makeId: () => string): Item[] {
       weight: parseWeight(e.weight),
       notes: str(e.description),
       equipped: !!e.equipped,
+      kind: 'gear',
     });
   }
   return items;
 }
 
-function buildNotes(d: Obj, classes: ClassLevel[], extra: string[]): string {
+/** Notes from the export: each note of the other app, plus one pinned note with everything the sheet does not track. */
+function buildNotes(d: Obj, classes: ClassLevel[], extra: string[], makeId: () => string, now: number): Note[] {
   const sections: string[] = [];
   const add = (title: string, lines: string[]) => { if (lines.length) sections.push(`${title}\n${lines.join('\n')}`); };
-  add('Imported from a .cah export', [
-    `Classes: ${classes.map((c) => `${CLASSES.find((k) => k.id === c.id)?.name ?? c.id} ${c.level}${c.subclass ? ` (${c.subclass})` : ''}`).join(', ')}`,
-    ...(num(d.exp) ? [`XP: ${num(d.exp)}`] : []),
-    ...(str(d.alignmentName) ? [`Alignment: ${titleCase(str(d.alignmentName).toLowerCase())}`] : []),
-    ...(str(d.player) ? [`Player: ${str(d.player)}`] : []),
-    ...(d.hasInspiration ? ['Heroic Inspiration: yes'] : []),
-  ]);
-  add('Notes', arr(d.notes).filter((n) => !n.archivedString && str(n.text)).map((n) => `- ${str(n.text)}`));
+  add('Classes', [classes.map((c) => `${classById(c.id)?.name ?? c.id} ${c.level}`).join(' / ')]);
+  if (str(d.alignmentName)) add('Alignment', [titleCase(str(d.alignmentName).toLowerCase())]);
+  if (str(d.player)) add('Player', [str(d.player)]);
   add('Resources', arr(d.specialAbilities).filter((a) => str(a.name)).map((a) => `- ${str(a.name)}: ${num(a.usesLeft)} left`));
   const features = [
     ...arr(d.feats).map((f) => str(f.name)),
@@ -153,7 +152,25 @@ function buildNotes(d: Obj, classes: ClassLevel[], extra: string[]): string {
     if (str(d[key])) add(title, [str(d[key])]);
   }
   add('Import notes', extra.map((e) => `- ${e}`));
-  return sections.join('\n\n');
+  const created = (n: Obj) => { const t = Date.parse(str(n.createdString)); return Number.isFinite(t) ? t : now; };
+  const own: Note[] = arr(d.notes).filter((n) => !n.archivedString && str(n.text)).map((n) => {
+    const text = str(n.text);
+    const first = text.split('\n')[0];
+    return {
+      id: makeId(), tag: 'Session', title: first.length > 40 ? `${first.slice(0, 40).trimEnd()}…` : first,
+      body: text, pinned: !!n.pinned, createdAt: created(n),
+    };
+  });
+  return [{ id: makeId(), tag: 'Session', title: 'Imported from .cah', body: sections.join('\n\n'), pinned: true, createdAt: now }, ...own];
+}
+
+/** Matches an exported subclass id ("paladin_oath_of_the_ancients") to a subclass of the class. */
+export function matchSubclass(classId: string, archetypeId: string): string | undefined {
+  const raw = archetypeId.toLowerCase().startsWith(`${classId}_`) ? archetypeId.slice(classId.length + 1) : archetypeId;
+  const want = norm(raw.replace(/^the[_\s-]+/i, ''));
+  if (!want) return undefined;
+  const list = subclassesFor(classId);
+  return (list.find((s) => norm(s.name) === want) ?? list.find((s) => norm(s.name).includes(want) || want.includes(norm(s.name))))?.id;
 }
 
 /** Converts a `.cah` character. `srdSpells` is the bundled SRD list used to match spells by name. */
@@ -171,10 +188,10 @@ export function fromCah(d: Obj, srdSpells: Spell[], makeId: () => string = defau
       continue;
     }
     if (classes.some((c) => c.id === id)) continue;
-    const prefix = `${id}_`;
     const arch = str(j.archetypeId);
-    const subclass = arch ? titleCase(arch.startsWith(prefix) ? arch.slice(prefix.length) : arch) : undefined;
-    classes.push({ id, level, ...(subclass ? { subclass } : {}) });
+    const subclassId = arch ? matchSubclass(id, arch) : undefined;
+    if (arch && !subclassId) noteLines.push(`Subclass not found: ${titleCase(arch)}`);
+    classes.push({ id, level, ...(subclassId ? { subclassId } : {}) });
   }
   if (!classes.length) {
     classes.push({ id: 'fighter', level: 1 });
@@ -220,7 +237,12 @@ export function fromCah(d: Obj, srdSpells: Spell[], makeId: () => string = defau
 
   // HP: the export stores HP without CON; the sheet adds CON per level.
   const conMod = abilityMod(abilities.con);
-  const fromBase = typeof d.baseHp === 'number' ? d.baseHp + conMod * total : multiclassMaxHp(classes, abilities.con);
+  // Without a stored base: the full first die, then the fixed average for every other level.
+  const avg = classes.reduce((n, c, i) => {
+    const die = classById(c.id)?.hitDie ?? 8;
+    return n + (i === 0 ? die + (c.level - 1) * (die / 2 + 1) : c.level * (die / 2 + 1));
+  }, 0);
+  const fromBase = (typeof d.baseHp === 'number' ? d.baseHp : avg) + conMod * total;
   const maxHp = Math.max(1, fromBase, num(d.hp));
   const currentHp = Math.max(0, Math.min(maxHp, num(d.hp, maxHp)));
 
@@ -230,6 +252,8 @@ export function fromCah(d: Obj, srdSpells: Spell[], makeId: () => string = defau
   const customSpells: Spell[] = [];
   const casterIds = classes.filter((c) => CLASSES.find((k) => k.id === c.id)?.spellAbility).map((c) => c.id);
   const sourceFor = (spellClasses: string[]) => casterIds.find((id) => spellClasses.includes(id)) ?? casterIds[0];
+  // Some exports never mark spells prepared; then every known spell counts as prepared.
+  const tracksPrepared = arr(d.spells).some((s) => s.prepared === true);
   for (const s of arr(d.spells)) {
     const name = str(s.name);
     if (!name) continue;
@@ -243,22 +267,28 @@ export function fromCah(d: Obj, srdSpells: Spell[], makeId: () => string = defau
     }
     if (spells.some((x) => x.id === spell.id)) continue;
     const classId = sourceFor([...spell.classes, ...exportClasses]);
-    spells.push({ id: spell.id, prepared: s.prepared === true || spell.level === 0, ...(classId ? { classId } : {}) });
+    spells.push({ id: spell.id, prepared: !tracksPrepared || s.prepared === true || spell.level === 0, ...(classId ? { classId } : {}) });
   }
   if (customSpells.length) {
     warnings.push(`${customSpells.length} spell${customSpells.length > 1 ? 's are' : ' is'} not in the SRD and ${customSpells.length > 1 ? 'were' : 'was'} added as custom: ${customSpells.map((s) => s.name).join(', ')}.`);
   }
 
+  const inv = inventory(d, makeId);
+  const extraAc = num(d.extraAC);
+  const [first, ...rest] = classes;
   const character: Character = {
     id: makeId(),
     name: str(d.name) || 'Imported character',
-    classes,
+    classId: first.id,
+    level: total,
+    ...(first.subclassId ? { subclassId: first.subclassId } : {}),
+    ...(rest.length ? { multiclass: rest } : {}),
     speciesId,
     backgroundId,
     abilities,
     skills,
     expertise,
-    armorClass: armorClass(d, abilityMod(abilities.dex)),
+    armorClass: armorClassFrom(first.id, abilities, inv.filter((i) => i.equipped)) + extraAc,
     ...(num(d.speedModifier) ? { speedOverride: (SPECIES.find((s) => s.id === speciesId)?.speed ?? 30) + num(d.speedModifier) } : {}),
     hp: { max: maxHp, current: currentHp, temp: Math.max(0, num(d.tempHp)) },
     hitDiceUsed: {},
@@ -270,11 +300,20 @@ export function fromCah(d: Obj, srdSpells: Spell[], makeId: () => string = defau
     spells,
     customSpells,
     concentration: null,
-    inventory: inventory(d, makeId),
+    inventory: inv,
     currency: { cp: num(d.copper), sp: num(d.silver), ep: num(d.electrum), gp: num(d.gold), pp: num(d.platinum) },
     rollLog: [],
-    notes: buildNotes(d, classes, noteLines),
-    creation: { method: 'manual', base: abilities, boosts: {}, hpAuto: false, imported: true },
+    xp: Math.max(0, num(d.exp)),
+    inspiration: !!d.hasInspiration,
+    notes: buildNotes(d, classes, noteLines, makeId, now),
+    combat: newCombat(),
+    languages: ['common'],
+    tools: [],
+    featureUses: {},
+    feats: [],
+    levelHistory: [],
+    // AC follows equipped armour unless the export adds a bonus the sheet cannot see.
+    creation: { method: 'manual', base: abilities, boosts: {}, hpAuto: false, acAuto: !extraAc },
     createdAt: now,
     updatedAt: now,
   };

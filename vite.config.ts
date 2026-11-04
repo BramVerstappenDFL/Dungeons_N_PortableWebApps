@@ -16,11 +16,11 @@ export default defineConfig({
       manifest: {
         name: 'D&D Assist',
         short_name: 'D&D Assist',
-        description: 'Character sheets, dice, rests, inventory and spells for D&D 5e (2024).',
-        theme_color: '#1b1420',
-        background_color: '#1b1420',
+        description: 'Character sheet, dice, combat, rests, inventory, spells and notes for D&D 5e (2024).',
+        theme_color: '#f8f0da',
+        background_color: '#ece0c4',
         display: 'standalone',
-        orientation: 'any',
+        orientation: 'portrait',
         start_url: '.',
         scope: '.',
         icons: [

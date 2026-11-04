@@ -1,17 +1,25 @@
 # D&D Assist: notes for Claude
 
 ## Workflow
+- `main` is the default branch. Never commit to it directly: start every change on a new sub-branch cut from the latest `origin/main`.
+- Give branches **descriptive names** that say what the change does, with a type prefix, e.g. `feat/spell-slot-tracker`, `fix/hp-temp-overflow`, `docs/readme-install-steps`. Avoid auto-generated names like `claude/loving-wozniak-xyz`; if the session assigns one, create a descriptive branch instead.
 - **Always open a pull request against `main`** after pushing work in a cloud session. Do not wait to be asked.
 - `main` is the deploy branch. Every push to it publishes to GitHub Pages (`.github/workflows/deploy.yml`).
 
 ## Project
 - Installable PWA (Vite + React 18 + TypeScript, `vite-plugin-pwa`) for D&D 5e, **2024 rules**.
-- Supports phone and desktop. Characters are stored in localStorage via Zustand (`src/store/characters.ts`).
-- Game logic lives in pure functions in `src/rules/` (dice, abilities, slots, HP, rests, spell rolls), with Vitest tests in `tests/`. Keep new rules there, with tests.
+- **Phone-first**; no desktop layout yet (wide screens show the phone column centered). Characters are stored in localStorage via Zustand (`src/store/characters.ts`). Bump the persist `version` and extend `migrateCharacter` when the `Character` shape changes.
+- UI follows the user's Claude Design canvas "D&D companion PWA" on the **Grimoire** design system. Screens are in `src/screens/` (one per route), shared UI in `src/ui/`, design-system CSS in `src/styles/grimoire/` (copied from the design; keep it unedited), shared patterns in `src/styles/app.css`.
+- Game logic lives in pure functions in `src/rules/` (dice, abilities, slots, HP, rests, spell rolls, XP, weapons, combat, creation), with Vitest tests in `tests/`. Keep new rules there, with tests.
 - SRD 5.2.1 data (CC-BY-4.0) is generated into `src/data/*.json` by `npm run build:srd`. Do not edit the JSON by hand. Keep the attribution in About, the README and `LICENSE-SRD`.
+- Species, lineage, origin-feat and path effects live in one place, `src/rules/origin.ts` (`originOf`, feature uses, granted spells, resistance, AC from armour). Screens read them through `derive(c).origin`; add new trait or feat effects there, with tests in `tests/origin.test.ts`.
+- Class progression lives in `src/rules/classes.ts` (spell counts, scaling class resources, `classFeatures`) and `src/rules/progression.ts` (`levelUpPlan`, `applyLevelUp`, `undoLastLevel`, `pendingLevels`); the flow is `src/screens/LevelUpScreen.tsx`. All features (origin + class) come from `featuresOf(c)` / `derive(c).features`. XP never raises the level by itself.
+- **Multiclassing**: `c.level` is the total character level; `c.classId`/`c.subclassId` are the starting class, which has the levels not taken in `c.multiclass`. Use `classLevels(c)` / `classLevelOf(c, id)` for per-class levels and `slotsOf(c)` for slots (Pact Magic is separate, `pactSlotsUsed`). Never read `c.level` as a class level.
+- `.cah` imports (another app's export) go through `src/rules/importCah.ts`; custom (non-SRD) spells live in `c.customSpells` with ids starting `custom-`.
+- `src/data/phb.ts` holds PHB 2024 backgrounds, Aasimar, subclasses, origin and general feats and fighting styles as **names and mechanics only** (`description: ''`, a test enforces it). Never add rules or flavour text from the book.
 
 ## Commands
 - `npm test`: unit tests
 - `npx tsc -b`: type check
 - `npm run build`: production build (`BASE_PATH` overrides the default `/Dungeons_N_PortableWebApps/`)
-- `npm run preview`: serve the build. To check the UI end to end, use the pre-installed Playwright Chromium at phone (390×844) and desktop (1280×800) sizes.
+- `npm run preview`: serve the build. To check the UI end to end, use the pre-installed Playwright Chromium at phone size (390×844).
