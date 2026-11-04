@@ -10,6 +10,21 @@
     <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>D&amp;D Assist</title>
+    <script>
+      // Apply the theme before first paint so Dungeon doesn't flash Parchment while the app loads.
+      // Mirrors useTheme(): the saved choice, else the system colour scheme.
+      (function () {
+        var t = null;
+        try { t = (JSON.parse(localStorage.getItem('dnd-assist') || '{}').state || {}).theme || null; } catch (e) {}
+        if (t !== 'parchment' && t !== 'dungeon') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dungeon' : 'parchment';
+        document.documentElement.dataset.theme = t;
+        if (t === 'dungeon') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#231b14');
+      })();
+    </script>
+    <style>
+      html { background: #dccba5; }
+      html[data-theme="dungeon"] { background: #0f0c09; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
