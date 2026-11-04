@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { Ability, AbilityScores, Character, CreationInfo, ScoreMethod } from '../types';
+import type { Ability, AbilityScores, Character, ClassLevel, CreationInfo, ScoreMethod } from '../types';
 import { BACKGROUNDS, CLASSES, SPECIES, backgroundById, classById } from '../data';
 import {
   ABILITIES, ABILITY_NAMES, POINT_BUY_BUDGET, POINT_BUY_COST, SKILLS, STANDARD_ARRAY,
-  abilityMod, defaultMaxHp, pointBuySpent,
+  abilityMod, pointBuySpent,
 } from '../rules/abilities';
 import { signed } from '../rules/dice';
 import { uid, useCharacter, useStore } from '../store/characters';
 import { Stepper } from '../components/Stepper';
+import { hitDicePools, multiclassMaxHp } from '../rules/classes';
 
 const BASE_DEFAULT: Record<ScoreMethod, AbilityScores> = {
   standard: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
@@ -23,8 +24,7 @@ export function CharacterEditor() {
   const { add, update } = useStore.getState();
 
   const [name, setName] = useState(existing?.name ?? '');
-  const [classId, setClassId] = useState(existing?.classId ?? 'fighter');
-  const [level, setLevel] = useState(existing?.level ?? 1);
+  const [classes, setClasses] = useState<ClassLevel[]>(existing?.classes ?? [{ id: 'fighter', level: 1 }]);
   const [speciesId, setSpeciesId] = useState(existing?.speciesId ?? 'human');
   const [backgroundId, setBackgroundId] = useState(existing?.backgroundId ?? 'soldier');
   const [method, setMethod] = useState<ScoreMethod>(existing?.creation?.method ?? (existing ? 'manual' : 'standard'));
@@ -40,28 +40,40 @@ export function CharacterEditor() {
   const [hpManual, setHpManual] = useState(existing?.hp.max ?? 10);
   const [acManual, setAcManual] = useState<number | null>(existing?.armorClass ?? null);
   const [error, setError] = useState('');
+  // Imported scores already include all increases, until the player picks a new score method.
+  const [imported, setImported] = useState(!!existing?.creation?.imported);
 
-  const cls = classById(classId)!;
+  const cls = classById(classes[0].id)!;
+  const level = classes.reduce((n, x) => n + x.level, 0);
   const bg = backgroundById(backgroundId);
   const bgAbilities: Ability[] = bg?.abilities.length ? bg.abilities : ABILITIES;
   const final = useMemo(
     () => Object.fromEntries(ABILITIES.map((a) => [a, Math.min(20, base[a] + (boosts[a] ?? 0))])) as AbilityScores,
     [base, boosts],
   );
-  const autoHp = defaultMaxHp(cls.hitDie, level, final.con);
+  const autoHp = multiclassMaxHp(classes, final.con);
   const maxHp = hpAuto ? autoHp : hpManual;
   const ac = acManual ?? 10 + abilityMod(final.dex);
   const bgSkills = bg?.skills ?? [];
   const skillPool = (cls.skillOptions ?? SKILLS.map((s) => s.id)).filter((s) => !bgSkills.includes(s));
   const boostTotal = Object.values(boosts).reduce((a, b) => a + (b ?? 0), 0);
-  const boostValid = boostTotal === 3 && Object.values(boosts).every((v) => (v ?? 0) <= 2);
+  const boostValid = imported || boostTotal === 3 && Object.values(boosts).every((v) => (v ?? 0) <= 2);
   const spent = pointBuySpent(base);
   const usedStd = ABILITIES.map((a) => base[a]);
   const stdValid = method !== 'standard' || [...usedStd].sort().join() === [...STANDARD_ARRAY].sort().join();
 
-  const changeMethod = (m: ScoreMethod) => { setMethod(m); setBase(BASE_DEFAULT[m]); };
+  const changeMethod = (m: ScoreMethod) => { setMethod(m); setBase(BASE_DEFAULT[m]); setImported(false); };
   const changeBackground = (b: string) => { setBackgroundId(b); setBoosts({}); setClassSkills((s) => s.filter((x) => !backgroundById(b)?.skills.includes(x))); };
-  const changeClass = (cId: string) => { setClassId(cId); setClassSkills([]); };
+  const setClassAt = (i: number, patch: Partial<ClassLevel>) => {
+    if (i === 0 && patch.id) setClassSkills([]);
+    setClasses((list) => list.map((x, j) => (j === i ? { ...x, ...patch, ...(patch.id ? { subclass: undefined } : {}) } : x)));
+  };
+  const addClass = () =>
+    setClasses((list) => [...list, { id: CLASSES.find((k) => !list.some((x) => x.id === k.id))?.id ?? 'fighter', level: 1 }]);
+  const removeClass = (i: number) => {
+    if (i === 0) setClassSkills([]);
+    setClasses((list) => list.filter((_, j) => j !== i));
+  };
   const setBoost = (a: Ability, v: number) => setBoosts((b) => ({ ...b, [a]: v }));
   const toggleSkill = (s: string) =>
     setClassSkills((list) => (list.includes(s) ? list.filter((x) => x !== s) : list.length < cls.skillCount ? [...list, s] : list));
@@ -69,29 +81,32 @@ export function CharacterEditor() {
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return setError('Give your character a name.');
+    if (level > 20) return setError('Total character level cannot be above 20.');
+    if (new Set(classes.map((x) => x.id)).size !== classes.length) return setError('Each class can only be listed once.');
+    const cleanClasses = classes.map((x) => ({ ...x, subclass: x.subclass?.trim() || undefined }));
     if (method === 'pointbuy' && spent > POINT_BUY_BUDGET) return setError('You have spent more than 27 points.');
     if (!stdValid) return setError('Use each Standard Array value (15, 14, 13, 12, 10, 8) exactly once.');
     if (!boostValid) return setError('Distribute background ability increases: +2/+1 or +1/+1/+1.');
     const skills = [...new Set([...bgSkills, ...classSkills])];
-    const creation: CreationInfo = { method, base, boosts, hpAuto };
+    const creation: CreationInfo = { method, base, boosts, hpAuto, ...(imported ? { imported } : {}) };
     const now = Date.now();
     if (existing) {
       update(existing.id, (c) => {
         const hpDiff = maxHp - c.hp.max;
         return {
-          ...c, name: name.trim(), classId, level, speciesId, backgroundId, abilities: final, skills,
+          ...c, name: name.trim(), classes: cleanClasses, speciesId, backgroundId, abilities: final, skills,
           expertise: expertise.filter((x) => skills.includes(x)), armorClass: ac, creation,
           hp: { ...c.hp, max: maxHp, current: Math.max(0, Math.min(maxHp, c.hp.current + Math.max(0, hpDiff))) },
-          hitDiceUsed: Math.min(c.hitDiceUsed, level),
+          hitDiceUsed: Object.fromEntries(hitDicePools({ classes: cleanClasses, hitDiceUsed: c.hitDiceUsed }).map((p) => [p.die, p.used])),
         };
       });
       navigate(`/c/${existing.id}`);
     } else {
       const c: Character = {
-        id: uid(), name: name.trim(), classId, level, speciesId, backgroundId, abilities: final, skills,
+        id: uid(), name: name.trim(), classes: cleanClasses, speciesId, backgroundId, abilities: final, skills,
         expertise: expertise.filter((x) => skills.includes(x)), armorClass: ac,
-        hp: { max: maxHp, current: maxHp, temp: 0 }, hitDiceUsed: 0, deathSaves: { successes: 0, failures: 0 },
-        exhaustion: 0, conditions: [], spellSlotsUsed: Array(9).fill(0), spells: [], concentration: null,
+        hp: { max: maxHp, current: maxHp, temp: 0 }, hitDiceUsed: {}, deathSaves: { successes: 0, failures: 0 },
+        exhaustion: 0, conditions: [], spellSlotsUsed: Array(9).fill(0), pactSlotsUsed: 0, spells: [], customSpells: [], concentration: null,
         inventory: [], currency: { cp: 0, sp: 0, ep: 0, gp: 15, pp: 0 }, rollLog: [], notes: '', creation,
         createdAt: now, updatedAt: now,
       };
@@ -109,13 +124,27 @@ export function CharacterEditor() {
       <section className="card form">
         <h3 className="card-title">1 · Basics</h3>
         <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Elara Moonwhisper" autoFocus={!existing} /></label>
-        <div className="form-row">
-          <label>Class
-            <select value={classId} onChange={(e) => changeClass(e.target.value)}>
-              {CLASSES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </label>
-          <label>Level<Stepper value={level} min={1} max={20} onChange={setLevel} label="Level" /></label>
+        {classes.map((x, i) => (
+          <div key={i} className="class-entry">
+            <div className="form-row">
+              <label>{i === 0 ? 'Class' : `Class ${i + 1}`}
+                <select value={x.id} onChange={(e) => setClassAt(i, { id: e.target.value })}>
+                  {CLASSES.filter((k) => k.id === x.id || !classes.some((y) => y.id === k.id)).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+                </select>
+              </label>
+              <label>Level<Stepper value={x.level} min={1} max={20 - (level - x.level)} onChange={(v) => setClassAt(i, { level: v })} label={`${classById(x.id)?.name ?? ''} level`} /></label>
+            </div>
+            <div className="form-row">
+              <label>Subclass<input value={x.subclass ?? ''} onChange={(e) => setClassAt(i, { subclass: e.target.value })} placeholder="optional" /></label>
+              {classes.length > 1 && (
+                <button type="button" className="btn btn-ghost small danger align-end" onClick={() => removeClass(i)} aria-label={`Remove ${classById(x.id)?.name ?? 'class'}`}>Remove</button>
+              )}
+            </div>
+          </div>
+        ))}
+        <div className="row space-between">
+          <span className="muted small">Total level {level}{classes.length > 1 ? ' (multiclass)' : ''}</span>
+          <button type="button" className="btn btn-ghost small" onClick={addClass} disabled={level >= 20 || classes.length >= CLASSES.length}>+ Add class</button>
         </div>
         <div className="form-row">
           <label>Species
@@ -131,7 +160,7 @@ export function CharacterEditor() {
           </label>
         </div>
         <p className="muted small">
-          d{cls.hitDie} Hit Die · Saves: {cls.saves.map((s) => s.toUpperCase()).join(', ')}
+          {classes.length > 1 ? `Hit Dice: ${classes.map((x) => `${x.level}d${classById(x.id)?.hitDie ?? 8}`).join(' + ')}` : `d${cls.hitDie} Hit Die`} · Saves ({cls.name}): {cls.saves.map((s) => s.toUpperCase()).join(', ')}
           {cls.spellAbility ? ` · Spellcasting: ${ABILITY_NAMES[cls.spellAbility]}` : ''}
         </p>
       </section>
@@ -169,6 +198,9 @@ export function CharacterEditor() {
             </div>
           ))}
         </div>
+        {imported ? (
+          <p className="small muted">Imported scores already include background and other increases.</p>
+        ) : (<>
         <h4>Background increases <span className="muted small">(+2 and +1, or +1 to three)</span></h4>
         <div className="boosts">
           {bgAbilities.map((a) => (
@@ -181,6 +213,7 @@ export function CharacterEditor() {
           ))}
         </div>
         {!boostValid && <p className="small muted">Assigned {boostTotal} / 3 points.</p>}
+        </>)}
       </section>
 
       <section className="card form">

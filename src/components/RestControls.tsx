@@ -23,16 +23,14 @@ export function RestControls({ c, d }: { c: Character; d: Derived }) {
 function ShortRest({ c, d, onClose }: { c: Character; d: Derived; onClose: () => void }) {
   const update = useStore((s) => s.update);
   const [log, setLog] = useState<string[]>([]);
-  const remaining = c.level - c.hitDiceUsed;
-  const spend = () => {
-    if (!d.cls) return;
-    const r = spendHitDie(c, d.cls);
+  const spend = (die: number) => {
+    const r = spendHitDie(c, die);
     if (!r) return;
     update(c.id, () => r.character);
-    setLog((l) => [...l, `d${d.hitDie}: rolled ${r.roll} ${signed(d.mods.con)} CON → healed ${r.healed}`]);
+    setLog((l) => [...l, `d${die}: rolled ${r.roll} ${signed(d.mods.con)} CON → healed ${r.healed}`]);
   };
   const finish = () => {
-    if (d.cls) update(c.id, (x) => finishShortRest(x, d.cls!));
+    update(c.id, finishShortRest);
     onClose();
   };
   return (
@@ -44,14 +42,18 @@ function ShortRest({ c, d, onClose }: { c: Character; d: Derived; onClose: () =>
       <p>Spend Hit Dice to recover HP. Each die heals its roll + your Constitution modifier.</p>
       <div className="big-row">
         <div><span className="label">HP</span><strong>{c.hp.current} / {c.hp.max}</strong></div>
-        <div><span className="label">Hit Dice left</span><strong>{remaining} × d{d.hitDie}</strong></div>
+        <div><span className="label">Hit Dice left</span><strong>{d.hitDice.map((p) => `${p.total - p.used} × d${p.die}`).join(', ')}</strong></div>
       </div>
-      <button className="btn btn-primary block" onClick={spend} disabled={remaining <= 0 || c.hp.current >= c.hp.max}>
-        Spend a Hit Die (d{d.hitDie})
-      </button>
+      <div className="stack-buttons">
+      {d.hitDice.map((p) => (
+        <button key={p.die} className="btn btn-primary block" onClick={() => spend(p.die)} disabled={p.used >= p.total || c.hp.current >= c.hp.max}>
+          Spend a Hit Die (d{p.die})
+        </button>
+      ))}
+      </div>
       {c.hp.current >= c.hp.max && <p className="muted small">You are at full HP.</p>}
       {log.length > 0 && <ul className="plain-list">{log.map((l, i) => <li key={i}>{l}</li>)}</ul>}
-      {d.cls?.casterType === 'pact' && <p className="muted small">Finishing the rest restores your Pact Magic spell slots.</p>}
+      {d.pact && <p className="muted small">Finishing the rest restores your Pact Magic spell slots.</p>}
     </Modal>
   );
 }
@@ -70,7 +72,7 @@ function LongRest({ c, onClose }: { c: Character; onClose: () => void }) {
       <p>After 8 hours of rest you:</p>
       <ul className="plain-list">
         <li>Regain all lost Hit Points ({c.hp.current} → {c.hp.max}); temporary HP end</li>
-        <li>Regain all spent Hit Dice ({c.hitDiceUsed} spent)</li>
+        <li>Regain all spent Hit Dice ({Object.values(c.hitDiceUsed).reduce((a, b) => a + b, 0)} spent)</li>
         <li>Regain all expended spell slots</li>
         {c.exhaustion > 0 && <li>Reduce Exhaustion by 1 ({c.exhaustion} → {c.exhaustion - 1})</li>}
         {c.concentration && <li>Stop concentrating on your current spell</li>}

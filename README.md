@@ -3,11 +3,13 @@
 An installable Progressive Web App for Dungeons & Dragons 5th edition (2024 rules). It works on phones and desktops, runs fully offline once installed, and keeps all data on your device.
 
 ## Features
-- **Characters**: create and edit characters (class, level, species, background, Standard Array / Point Buy / manual ability scores, 2024 background ability increases, skills, HP, AC). Duplicate, delete, and import or export characters as JSON.
+- **Characters**: create and edit characters (one or more classes with subclasses, species, background, Standard Array / Point Buy / manual ability scores, 2024 background ability increases, skills, HP, AC). Duplicate, delete, and import or export characters as JSON.
+- **Import from other apps**: *Import character* also reads `.cah` character exports. Classes (including multiclass), ability scores, skills, HP, AC, spells, inventory and coins are mapped. Spells that are not in the SRD come in as custom spells, and features, resources and notes go into the character's notes.
+- **Multiclassing** (2024 rules): proficiency bonus from total level, saving throws from the first class, combined spell slots, separate Pact Magic slots, and one Hit Dice pool per die size.
 - **Rolls**: tap any ability, save, skill or initiative to roll it. A dice tray handles d4–d100 with advantage/disadvantage and expressions like `2d6+1d4+3` or `4d6kh3`. Each character keeps a roll history.
 - **HP**: damage, healing and temporary HP (temp HP absorbs damage first), death saves, massive damage, and a concentration-save reminder.
 - **Rests**: short rest (spend Hit Dice; Warlock Pact slots come back) and long rest (all HP, Hit Dice and slots restored; Exhaustion −1).
-- **Spells**: the full SRD 5.2.1 spell list (339 spells) with search and filters. Casting uses slots (including upcasting and rituals), rolls attack, damage and healing (cantrips scale with level), shows the save DC, and tracks concentration.
+- **Spells**: the full SRD 5.2.1 spell list (339 spells) with search and filters, plus your own custom spells. Casting uses slots (including upcasting and rituals), rolls attack, damage and healing (cantrips scale with level), shows the save DC, and tracks concentration.
 - **Inventory**: items with quantity, weight, notes and an equipped flag, plus coins and carrying capacity.
 - **Conditions and Exhaustion** (the 2024 −2 per level to d20 tests is applied automatically).
 

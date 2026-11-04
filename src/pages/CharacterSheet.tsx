@@ -11,6 +11,7 @@ import { InventoryTab } from '../components/InventoryTab';
 import { DiceTray } from '../components/DiceTray';
 import { RollLog } from '../components/RollLog';
 import { backgroundById } from '../data';
+import { classLabel } from '../rules/classes';
 
 type Tab = 'overview' | 'spells' | 'inventory' | 'dice';
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -86,7 +87,7 @@ export function CharacterSheet() {
         <div className="avatar lg" aria-hidden>{c.name.charAt(0).toUpperCase()}</div>
         <div className="grow">
           <h1>{c.name}</h1>
-          <p className="muted small">Level {c.level} {d.species?.name} {d.cls?.name}{bgName ? ` · ${bgName}` : ''}</p>
+          <p className="muted small">Level {d.level} {d.species?.name} {classLabel(c)}{bgName ? ` · ${bgName}` : ''}</p>
         </div>
         <Link to={`/c/${c.id}/edit`} className="btn btn-ghost small">Edit</Link>
       </header>

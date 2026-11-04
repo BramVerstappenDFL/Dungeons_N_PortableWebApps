@@ -1,24 +1,25 @@
-import type { Character, ClassData } from '../types';
+import type { Character } from '../types';
 import { abilityMod } from './abilities';
 import { rollDie } from './dice';
+import { hitDicePools } from './classes';
 
-/** Spends one Hit Die during a short rest: roll the die + CON mod (min 0) and heal. */
-export function spendHitDie(c: Character, cls: ClassData): { character: Character; roll: number; healed: number } | null {
-  if (c.hitDiceUsed >= c.level) return null;
-  const roll = rollDie(cls.hitDie);
+/** Spends one Hit Die of the given size during a short rest: roll the die + CON mod (min 0) and heal. */
+export function spendHitDie(c: Character, die: number): { character: Character; roll: number; healed: number } | null {
+  const pool = hitDicePools(c).find((p) => p.die === die);
+  if (!pool || pool.used >= pool.total) return null;
+  const roll = rollDie(die);
   const healed = Math.max(0, roll + abilityMod(c.abilities.con));
   const current = Math.min(c.hp.max, c.hp.current + healed);
   return {
-    character: { ...c, hitDiceUsed: c.hitDiceUsed + 1, hp: { ...c.hp, current } },
+    character: { ...c, hitDiceUsed: { ...c.hitDiceUsed, [die]: pool.used + 1 }, hp: { ...c.hp, current } },
     roll,
     healed: current - c.hp.current,
   };
 }
 
-/** Finishes a short rest: Warlocks regain all Pact Magic slots. */
-export function finishShortRest(c: Character, cls: ClassData): Character {
-  if (cls.casterType !== 'pact') return c;
-  return { ...c, spellSlotsUsed: Array(9).fill(0) };
+/** Finishes a short rest: Pact Magic slots come back. */
+export function finishShortRest(c: Character): Character {
+  return c.pactSlotsUsed ? { ...c, pactSlotsUsed: 0 } : c;
 }
 
 /**
@@ -29,8 +30,9 @@ export function longRest(c: Character): Character {
   return {
     ...c,
     hp: { ...c.hp, current: c.hp.max, temp: 0 },
-    hitDiceUsed: 0,
+    hitDiceUsed: {},
     spellSlotsUsed: Array(9).fill(0),
+    pactSlotsUsed: 0,
     deathSaves: { successes: 0, failures: 0 },
     exhaustion: Math.max(0, c.exhaustion - 1),
     concentration: null,

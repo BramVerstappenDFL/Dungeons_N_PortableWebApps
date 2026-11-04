@@ -1,7 +1,9 @@
 import { useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/characters';
-import { classById, speciesById } from '../data';
+import { loadSpells, speciesById } from '../data';
+import { fromCah, isCahCharacter } from '../rules/importCah';
+import { classLabel, totalLevel } from '../rules/classes';
 import type { Character } from '../types';
 
 function download(name: string, data: unknown) {
@@ -15,7 +17,7 @@ function download(name: string, data: unknown) {
 
 export function CharacterList() {
   const characters = useStore((s) => s.characters);
-  const { remove, duplicate, importMany } = useStore.getState();
+  const { add, remove, duplicate, importMany } = useStore.getState();
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -23,13 +25,29 @@ export function CharacterList() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    let data: unknown;
     try {
-      const data = JSON.parse(await file.text());
-      const n = importMany(Array.isArray(data) ? data : [data]);
-      alert(n ? `Imported ${n} character${n > 1 ? 's' : ''}.` : 'No characters found in that file.');
+      data = JSON.parse(await file.text());
     } catch {
-      alert('That file could not be read as a character backup.');
+      alert('That file could not be read. Choose a D&D Assist backup (.json) or a .cah character export.');
+      return;
     }
+    const list = Array.isArray(data) ? data : [data];
+    if (list.some(isCahCharacter)) {
+      const srd = await loadSpells();
+      const results = list.filter(isCahCharacter).map((d) => fromCah(d, srd));
+      results.forEach((r) => add(r.character));
+      const warnings = results.flatMap((r) => r.warnings);
+      alert(
+        `Imported ${results.map((r) => r.character.name).join(', ')}.` +
+          (warnings.length ? `\n\n${warnings.map((w) => `• ${w}`).join('\n')}` : '') +
+          '\n\nCheck the notes on the character sheet for features, resources and other details from the export.',
+      );
+      if (results.length === 1) navigate(`/c/${results[0].character.id}`);
+      return;
+    }
+    const n = importMany(list as Character[]);
+    alert(n ? `Imported ${n} character${n > 1 ? 's' : ''}.` : 'No characters found in that file.');
   };
 
   return (
@@ -51,9 +69,10 @@ export function CharacterList() {
         </ul>
       )}
       <div className="row wrap mt">
-        <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>Import backup</button>
+        <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>Import character</button>
         {characters.length > 0 && <button className="btn btn-ghost" onClick={() => download('dnd-assist-characters.json', characters)}>Export all</button>}
-        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onImport} />
+        {/* No accept filter: phones often grey out unknown extensions such as .cah. */}
+        <input ref={fileRef} type="file" hidden onChange={onImport} />
       </div>
     </div>
   );
@@ -67,7 +86,7 @@ function CharacterCard({ c, onDelete, onCopy }: { c: Character; onDelete: () => 
         <div className="avatar" aria-hidden>{c.name.charAt(0).toUpperCase()}</div>
         <div className="grow">
           <h2>{c.name}</h2>
-          <p className="muted small">Level {c.level} {speciesById(c.speciesId)?.name ?? ''} {classById(c.classId)?.name ?? ''}</p>
+          <p className="muted small">Level {totalLevel(c)} {speciesById(c.speciesId)?.name ?? ''} {classLabel(c)}</p>
           <div className="hp-bar thin"><div className="hp-fill" style={{ width: `${pct}%` }} /></div>
           <p className="small">{c.hp.current}/{c.hp.max} HP</p>
         </div>

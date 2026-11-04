@@ -53,7 +53,14 @@ export interface Item {
 }
 export interface Currency { cp: number; sp: number; ep: number; gp: number; pp: number }
 
-export interface CharacterSpell { id: string; prepared: boolean }
+export interface CharacterSpell {
+  id: string;
+  prepared: boolean;
+  /** Class whose spellcasting ability the spell uses (multiclass). Defaults to the first caster class. */
+  classId?: string;
+}
+
+export interface ClassLevel { id: string; level: number; subclass?: string }
 
 export interface RollLogEntry {
   id: string;
@@ -71,13 +78,15 @@ export interface CreationInfo {
   base: AbilityScores;
   boosts: Partial<Record<Ability, number>>;
   hpAuto: boolean;
+  /** Scores came from another app and already include every bonus; background increases are not asked. */
+  imported?: boolean;
 }
 
 export interface Character {
   id: string;
   name: string;
-  classId: string;
-  level: number;
+  /** First entry is the starting class (saving throws, skill choices, level 1 HP). */
+  classes: ClassLevel[];
   speciesId: string;
   backgroundId: string;
   abilities: AbilityScores; // final scores incl. background boosts
@@ -86,12 +95,16 @@ export interface Character {
   armorClass: number;
   speedOverride?: number;
   hp: { max: number; current: number; temp: number };
-  hitDiceUsed: number;
+  /** Spent Hit Dice keyed by die size, e.g. { 10: 1, 8: 2 }. */
+  hitDiceUsed: Record<number, number>;
   deathSaves: { successes: number; failures: number };
   exhaustion: number;
   conditions: string[];
-  spellSlotsUsed: number[]; // index 0 = level 1 slots used (pact slots for warlocks)
+  spellSlotsUsed: number[]; // index 0 = level 1 slots used (Spellcasting slots)
+  pactSlotsUsed: number; // Warlock Pact Magic slots used
   spells: CharacterSpell[];
+  /** Spells that are not in the SRD list, stored on the character. Ids start with "custom-". */
+  customSpells: Spell[];
   concentration: string | null; // spell id
   inventory: Item[];
   currency: Currency;

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Character, RollLogEntry } from '../types';
 import { roll as rollDice, type RollMode } from '../rules/dice';
+import { migrateCharacter } from '../rules/classes';
 
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
 const MAX_LOG = 100;
@@ -38,7 +39,7 @@ export const useStore = create<State>()(
         return copy.id;
       },
       importMany: (list) => {
-        const valid = list.filter((c) => c && typeof c.name === 'string' && c.abilities && c.hp);
+        const valid = list.filter((c) => c && typeof c.name === 'string' && c.abilities && c.hp).map(migrateCharacter);
         const existing = new Set(get().characters.map((c) => c.id));
         const fixed = valid.map((c) => (existing.has(c.id) ? { ...c, id: uid() } : c));
         set((s) => ({ characters: [...s.characters, ...fixed] }));
@@ -74,8 +75,13 @@ export const useStore = create<State>()(
     }),
     {
       name: 'dnd-assist',
-      version: 1,
+      version: 2,
       partialize: (s) => ({ characters: s.characters }),
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as { characters?: unknown[] };
+        if (version < 2) return { ...p, characters: (p.characters ?? []).map(migrateCharacter) } as State;
+        return p as State;
+      },
     },
   ),
 );

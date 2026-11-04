@@ -15,7 +15,9 @@ export function CombatStats({ c, d }: { c: Character; d: Derived }) {
       <div className="stat"><span className="label">Speed</span><strong>{d.speed} ft</strong></div>
       <div className="stat"><span className="label">Prof.</span><strong>{signed(d.pb)}</strong></div>
       <div className="stat"><span className="label">Passive Perc.</span><strong>{d.passivePerception}</strong></div>
-      <div className="stat"><span className="label">Hit Dice</span><strong>{c.level - c.hitDiceUsed}/{c.level}<small>d{d.hitDie}</small></strong></div>
+      <div className="stat"><span className="label">Hit Dice</span>
+        <strong>{d.hitDice.map((p, i) => <span key={p.die}>{i > 0 && ' · '}{p.total - p.used}/{p.total}<small>d{p.die}</small></span>)}</strong>
+      </div>
     </section>
   );
 }
