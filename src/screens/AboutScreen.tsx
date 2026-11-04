@@ -28,7 +28,7 @@ export function AboutScreen() {
           <a href="https://www.dndbeyond.com/srd" target="_blank" rel="noreferrer">https://www.dndbeyond.com/srd</a>. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at{' '}
           <a href="https://creativecommons.org/licenses/by/4.0/legalcode" target="_blank" rel="noreferrer">https://creativecommons.org/licenses/by/4.0/legalcode</a>.
         </p>
-        <p className="muted" style={{ margin: 0 }}>Spell, class, species, background and weapon data were converted from the open <code>@opencharacter/5e-srd-5.2</code> package (CC-BY-4.0). D&amp;D Assist is unofficial fan content and is not affiliated with or endorsed by Wizards of the Coast.</p>
+        <p className="muted" style={{ margin: 0 }}>Spell, class, subclass, species, lineage, background, feat, language, equipment and weapon data were converted from the open <code>@opencharacter/5e-srd-5.2</code> package (CC-BY-4.0). D&amp;D Assist is unofficial fan content and is not affiliated with or endorsed by Wizards of the Coast. Entries marked PHB (Player&rsquo;s Handbook, 2024) are listed by name and mechanics only; no rules text from that book is included.</p>
       </main>
     </div>
   );

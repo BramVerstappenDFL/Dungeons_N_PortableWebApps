@@ -24,16 +24,10 @@ export function bandPct(xp: number): number {
 export const hpPerLevel = (hitDie: number, con: number) => Math.max(1, hitDie / 2 + 1 + abilityMod(con));
 
 /**
- * Adds experience. When the total crosses a level threshold the level rises (never falls),
- * and max and current HP each grow by the fixed average per level gained.
+ * Adds experience. Crossing a threshold does not raise the level by itself: the level-up flow
+ * (`src/rules/progression.ts`) takes each new level with the player's choices.
  */
-export function applyXp(c: Character, amount: number, hitDie: number): { character: Character; levelsGained: number } {
+export function applyXp(c: Character, amount: number): { character: Character; levelsReady: number } {
   const xp = Math.max(0, c.xp + Math.max(0, Math.floor(amount)));
-  const level = Math.max(c.level, levelForXp(xp));
-  const levelsGained = level - c.level;
-  const gain = levelsGained * hpPerLevel(hitDie, c.abilities.con);
-  return {
-    character: { ...c, xp, level, hp: { ...c.hp, max: c.hp.max + gain, current: c.hp.current + gain } },
-    levelsGained,
-  };
+  return { character: { ...c, xp }, levelsReady: Math.max(0, levelForXp(xp) - c.level) };
 }

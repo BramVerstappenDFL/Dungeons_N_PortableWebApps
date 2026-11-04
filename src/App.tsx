@@ -12,6 +12,7 @@ import { DiceScreen } from './screens/DiceScreen';
 import { PackScreen } from './screens/PackScreen';
 import { NotesScreen } from './screens/NotesScreen';
 import { SpellBookScreen } from './screens/SpellBookScreen';
+import { LevelUpRoute } from './screens/LevelUpScreen';
 import { AboutScreen } from './screens/AboutScreen';
 
 // Browser and status-bar colour: the `paper` token of each theme, matching the header.
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/pack" element={<PackScreen key={active.id} c={active} />} />
             <Route path="/notes" element={<NotesScreen key={active.id} c={active} />} />
             <Route path="/spells" element={<SpellBookScreen c={active} />} />
+            <Route path="/level-up" element={<LevelUpRoute c={active} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </>
         ) : (

@@ -4,6 +4,7 @@ import type { Character, Item, Note, RollLogEntry } from '../types';
 import { roll as rollDice, type RollMode, type RollResult } from '../rules/dice';
 import { XP_TABLE } from '../rules/xp';
 import { newCombat } from '../rules/combat';
+import { armorByName } from '../data';
 
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
 const MAX_LOG = 100;
@@ -38,7 +39,11 @@ export function migrateCharacter(raw: unknown): Character {
     : typeof oldNotes === 'string' && oldNotes.trim()
       ? [{ id: uid(), tag: 'Session', title: 'Notes', body: oldNotes.trim(), pinned: false, createdAt: c.updatedAt ?? Date.now() }]
       : [];
-  const inventory: Item[] = (c.inventory ?? []).map((i) => ({ ...i, kind: i.kind ?? 'gear' }));
+  // Armour picked up before items carried their armour data gets it from the SRD table by name.
+  const inventory: Item[] = (c.inventory ?? []).map((i) => {
+    const a = i.armor ?? armorByName(i.name ?? '');
+    return { ...i, kind: i.kind ?? 'gear', ...(a ? { armor: { category: a.category, ac: a.ac } } : {}) };
+  });
   return {
     ...c,
     xp: typeof c.xp === 'number' ? c.xp : XP_TABLE[Math.max(1, Math.min(20, c.level ?? 1))],
@@ -46,6 +51,11 @@ export function migrateCharacter(raw: unknown): Character {
     notes,
     inventory,
     combat: c.combat ?? newCombat(),
+    languages: Array.isArray(c.languages) ? c.languages : ['common'],
+    tools: Array.isArray(c.tools) ? c.tools : [],
+    featureUses: c.featureUses ?? {},
+    feats: Array.isArray(c.feats) ? c.feats : [],
+    levelHistory: Array.isArray(c.levelHistory) ? c.levelHistory : [],
   };
 }
 
@@ -102,7 +112,7 @@ export const useStore = create<State>()(
     }),
     {
       name: 'dnd-assist',
-      version: 2,
+      version: 5,
       partialize: (s) => ({ characters: s.characters, activeId: s.activeId, theme: s.theme }),
       migrate: (persisted, version) => {
         const p = (persisted ?? {}) as { characters?: unknown[]; activeId?: string | null; theme?: Theme | null };

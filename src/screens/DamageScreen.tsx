@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Character } from '../types';
 import { useStore } from '../store/characters';
 import { applyDamage, applyHealing, setTempHp } from '../rules/hp';
+import { applyResistance, originOf } from '../rules/origin';
 import { Icon, type IconName } from '../ui/Icon';
 import { CELLS, HpCells, cellSpan, type Cell } from '../ui/HpCells';
 import './damage.css';
@@ -35,6 +36,8 @@ export function DamageScreen({ c }: { c: Character }) {
 
   const max = c.hp.max;
   const amt = parseInt(amount || '0', 10);
+  const resistances = originOf(c).resistances;
+  const resisted = mode === 'damage' && resistances.includes(dtype.toLowerCase());
   const { on, end } = cellSpan(c.hp.current, c.hp.temp, max);
   const cells: Cell[] = Array.from({ length: CELLS }, (_, i) => {
     let cls = i < on ? 'on' : i < end ? 'tmp' : '';
@@ -55,18 +58,19 @@ export function DamageScreen({ c }: { c: Character }) {
     if (!amt) return;
     const prev = { prevOn: on, prevEnd: end };
     if (mode === 'damage') {
-      const next = applyDamage(c, amt);
-      update(c.id, (x) => applyDamage(x, amt));
-      const dc = Math.max(10, Math.floor(amt / 2));
+      const taken = applyResistance(amt, dtype, resistances);
+      const next = applyDamage(c, taken);
+      update(c.id, (x) => applyDamage(x, taken));
+      const dc = Math.max(10, Math.floor(taken / 2));
       if (next.deathSaves.failures >= 3 && c.hp.current > 0) {
         setNotice({ kind: 'gr-notice gr-error', title: 'Massive damage', text: 'The damage left over after dropping to 0 equals your hit point maximum. Your character dies.' });
       } else if (next.hp.current === 0) {
         setNotice({ kind: 'gr-notice gr-error', title: c.hp.current === 0 ? 'Failed death save' : 'You drop to 0 hit points', text: c.hp.current === 0 ? `Damage while down counts as a failed death save (${next.deathSaves.failures} of 3).` : 'Make death saving throws at the start of your turns. They are on the sheet.' });
       } else {
-        setNotice({ kind: 'gr-notice gr-warn', title: `Took ${amt} ${dtype.toLowerCase()} damage`, text: c.concentration ? `You are concentrating: make a Constitution save, DC ${dc}.` : `Concentrating? Make a Constitution save, DC ${dc}.` });
+        setNotice({ kind: 'gr-notice gr-warn', title: taken < amt ? `Resisted: took ${taken} of ${amt} ${dtype.toLowerCase()} damage` : `Took ${amt} ${dtype.toLowerCase()} damage`, text: c.concentration ? `You are concentrating: make a Constitution save, DC ${dc}.` : `Concentrating? Make a Constitution save, DC ${dc}.` });
       }
       setAmount('');
-      fire({ kind: 'dmg', ...prev, text: `−${amt}` });
+      fire({ kind: 'dmg', ...prev, text: `−${taken}` });
     } else if (mode === 'heal') {
       const hp = Math.min(max, c.hp.current + amt);
       update(c.id, (x) => applyHealing(x, amt));
@@ -83,7 +87,7 @@ export function DamageScreen({ c }: { c: Character }) {
   };
 
   let label = 'Enter an amount';
-  if (amt) label = mode === 'damage' ? `Take ${amt} damage` : mode === 'heal' ? `Heal ${amt} hit points` : `Gain ${amt} temp HP`;
+  if (amt) label = mode === 'damage' ? (resisted ? `Take ${Math.floor(amt / 2)} damage (resisted)` : `Take ${amt} damage`) : mode === 'heal' ? `Heal ${amt} hit points` : `Gain ${amt} temp HP`;
   const seg = (m: Mode) => (mode === m ? 'segbtn is-on' : 'segbtn');
 
   return (
@@ -122,8 +126,16 @@ export function DamageScreen({ c }: { c: Character }) {
         {mode === 'damage' && (
           <div className="chips" role="group" aria-label="Damage type" style={{ flexWrap: 'nowrap', overflowX: 'auto', margin: '0 -16px', padding: '0 16px 2px' }}>
             {TYPES.map((n) => (
-              <button key={n} className={`gr-chip dtype${dtype === n ? ' is-on' : ''}`} onClick={() => setDtype(n)} aria-pressed={dtype === n}>{n}</button>
+              <button key={n} className={`gr-chip dtype${dtype === n ? ' is-on' : ''}`} onClick={() => setDtype(n)} aria-pressed={dtype === n}>
+                {n}{resistances.includes(n.toLowerCase()) && <Icon name="shield" label="resisted" />}
+              </button>
             ))}
+          </div>
+        )}
+        {resisted && (
+          <div key={dtype} className="gr-notice gr-hint" style={{ animation: 'pop-in .3s cubic-bezier(.2,.8,.2,1) both' }}>
+            <Icon name="shield" />
+            <span><b>You resist {dtype.toLowerCase()}</b>Damage of this type is halved{amt ? `: ${amt} becomes ${Math.floor(amt / 2)}` : ''}.</span>
           </div>
         )}
 

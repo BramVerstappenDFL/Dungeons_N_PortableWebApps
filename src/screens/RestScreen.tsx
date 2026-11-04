@@ -27,6 +27,13 @@ function restRows(before: Character, after: Character): Row[] {
   rows.push({ label: 'Exhaustion', note: 'Drops by one level', from: `${before.exhaustion}`, to: `${after.exhaustion}` });
   if (before.hp.temp > 0) rows.push({ label: 'Temporary HP', note: 'They fade', from: `${before.hp.temp}`, to: '0' });
   if (before.concentration) rows.push({ label: 'Concentration', note: 'Ends when you sleep', from: 'On', to: 'Off' });
+  for (const f of d.features) {
+    const used = before.featureUses?.[f.id] ?? 0;
+    if (f.uses && used > 0) rows.push({ label: f.name, note: 'Uses come back', from: `${f.uses.max - used} / ${f.uses.max}`, to: `${f.uses.max} / ${f.uses.max}` });
+  }
+  const freeCasts = Object.keys(before.featureUses ?? {}).filter((k) => k.startsWith('free-') && before.featureUses![k] > 0).length;
+  if (freeCasts) rows.push({ label: 'Free casts', note: 'Feat and lineage spells', from: 'Used', to: 'Ready' });
+  if (!before.inspiration && after.inspiration) rows.push({ label: 'Heroic Inspiration', note: 'Resourceful', from: 'None', to: 'Yes' });
   if (before.deathSaves.successes || before.deathSaves.failures) rows.push({ label: 'Death saves', note: 'Reset', from: `${before.deathSaves.successes}✓ ${before.deathSaves.failures}✗`, to: '0' });
   return rows;
 }

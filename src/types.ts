@@ -11,9 +11,43 @@ export interface ClassData {
   skillOptions: string[] | null;
   spellAbility: Ability | null;
   casterType: CasterType;
+  primary?: Ability[];
+  kits?: StartingKit[];
+  features?: ClassFeature[];
+  asiLevels?: number[];
 }
-export interface SpeciesData { id: string; name: string; speed: number; size: string; description: string }
-export interface BackgroundData { id: string; name: string; skills: string[]; abilities: Ability[]; description: string }
+export interface ClassFeature { id: string; name: string; level: number; description: string }
+/** Where an entry comes from. PHB 2024 entries carry names and mechanics only, never rules text. */
+export type Source = 'SRD 5.2.1' | 'PHB 2024';
+export interface KitItem { name: string; qty: number; weight: number; weaponId?: string; armor?: ArmorInfo }
+export interface StartingKit { id: string; items: KitItem[]; gp: number }
+/** Rules effects the app applies, extracted from the SRD (or listed for PHB entries). */
+export interface Mechanics {
+  resistances?: string[];
+  darkvision?: number;
+  hpPerLevel?: number;
+  speedBonus?: number;
+  spells?: { id: string; minLevel: number }[];
+  abilityChoice?: boolean; // int/wis/cha spellcasting ability for granted spells
+}
+export interface TraitData extends Mechanics { id: string; name: string; description: string }
+export type Size = 'small' | 'medium';
+export interface SpeciesData {
+  id: string; name: string; speed: number; size: string; description: string;
+  sizes?: Size[]; lineage?: boolean; traits?: TraitData[]; source?: Source;
+}
+export interface BackgroundData {
+  id: string; name: string; skills: string[]; abilities: Ability[]; description: string;
+  feat?: string; featNote?: string; tool?: string; kits?: StartingKit[]; source?: Source;
+}
+export interface LineageData extends Mechanics { id: string; name: string; speciesId: string; damageType?: string; description: string; source?: Source }
+export interface SubclassFeature { id: string; name: string; level: number; description: string }
+export interface SubclassData { id: string; name: string; classId: string; description: string; features?: SubclassFeature[]; source?: Source }
+export interface FeatData {
+  id: string; name: string; category: string; description: string; source?: Source;
+  prerequisiteLevel?: number; abilities?: Ability[]; repeatable?: boolean;
+}
+export interface LanguageData { id: string; name: string; rare: boolean }
 export interface Spell {
   id: string;
   name: string;
@@ -58,6 +92,7 @@ export interface WeaponData {
   weight: number;
 }
 
+export interface ArmorInfo { category: 'light' | 'medium' | 'heavy' | 'shield'; ac: number }
 export type ItemKind = 'weapon' | 'gear' | 'consumable';
 export interface Item {
   id: string;
@@ -68,11 +103,13 @@ export interface Item {
   equipped: boolean;
   kind: ItemKind;
   weaponId?: string; // SRD weapon this item uses
+  armor?: ArmorInfo; // body armour or shield; equipped armour sets AC
   effect?: string; // dice expression rolled on Use, e.g. "2d4+2"
 }
 export interface Currency { cp: number; sp: number; ep: number; gp: number; pp: number }
 
-export interface CharacterSpell { id: string; prepared: boolean }
+/** A known spell. `source` marks spells from a feat (cast with their own `ability`, one free cast per long rest). */
+export interface CharacterSpell { id: string; prepared: boolean; source?: 'feat' | 'lineage'; ability?: Ability }
 
 export interface RollLogEntry {
   id: string;
@@ -107,8 +144,17 @@ export interface CreationInfo {
   base: AbilityScores;
   boosts: Partial<Record<Ability, number>>;
   hpAuto: boolean;
+  acAuto?: boolean; // AC follows equipped armour
 }
 
+export interface TakenFeat { id: string; level: number; ability?: Ability; note?: string }
+/** One level gained, with what it changed, so it can be undone. */
+export interface LevelRecord {
+  level: number; // the level reached
+  hp: number; // max HP gained
+  rolled?: number; // the hit die roll, if rolled
+  before: Pick<Character, 'abilities' | 'subclassId' | 'skills' | 'expertise' | 'spells' | 'feats' | 'saveProficiencies' | 'speedOverride'>;
+}
 export interface Character {
   id: string;
   name: string;
@@ -137,6 +183,21 @@ export interface Character {
   notes: Note[];
   combat: CombatState;
   creation?: CreationInfo;
+  lineageId?: string;
+  size?: Size;
+  subclassId?: string; // chosen path; the subclass itself starts at level 3
+  originFeat?: string; // feat id, with an optional note such as "Wizard"
+  originFeatNote?: string;
+  languages?: string[];
+  tools?: string[];
+  originAbility?: Ability; // spellcasting ability for lineage spells
+  extraFeat?: string; // Human Versatile origin feat
+  extraFeatNote?: string;
+  originPicks?: { keenSenses?: string; skillful?: string; skilled?: string[] };
+  featureUses?: Record<string, number>; // uses spent, by feature id
+  feats?: TakenFeat[]; // feats from level-ups (ASI, Fighting Style, Epic Boon)
+  saveProficiencies?: Ability[]; // extra saves (Resilient)
+  levelHistory?: LevelRecord[];
   createdAt: number;
   updatedAt: number;
 }

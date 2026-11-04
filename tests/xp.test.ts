@@ -24,20 +24,20 @@ describe('xp', () => {
   });
   it('adds XP without levelling inside a band', () => {
     const c = makeCharacter({ xp: 6500, level: 5 });
-    const { character, levelsGained } = applyXp(c, 1000, 6);
+    const { character, levelsReady } = applyXp(c, 1000);
     expect(character.xp).toBe(7500);
-    expect(levelsGained).toBe(0);
+    expect(levelsReady).toBe(0);
     expect(character.hp.max).toBe(32);
   });
-  it('levels up (possibly several times) and grows HP', () => {
+  it('marks level-ups as ready without taking them', () => {
     const c = makeCharacter({ xp: 6500, level: 5, hp: { max: 32, current: 20, temp: 0 } });
-    const { character, levelsGained } = applyXp(c, 16500, 6); // 23000 = level 7
-    expect(levelsGained).toBe(2);
-    expect(character.level).toBe(7);
-    expect(character.hp).toEqual({ max: 44, current: 32, temp: 0 });
+    const { character, levelsReady } = applyXp(c, 16500); // 23000 = level 7
+    expect(levelsReady).toBe(2);
+    expect(character.level).toBe(5);
+    expect(character.hp).toEqual(c.hp);
   });
   it('ignores negative amounts', () => {
     const c = makeCharacter({ xp: 6500, level: 5 });
-    expect(applyXp(c, -50, 6).character.xp).toBe(6500);
+    expect(applyXp(c, -50).character.xp).toBe(6500);
   });
 });

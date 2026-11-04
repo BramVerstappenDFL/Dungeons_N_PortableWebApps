@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { Character, EconomySlot, Spell } from '../types';
+import type { Character, CharacterSpell, EconomySlot, Spell } from '../types';
 import { weaponById } from '../data';
 import { useStore } from '../store/characters';
 import { derive } from '../rules/derived';
@@ -7,6 +7,8 @@ import { endTurn, newCombat, pickSlot, setUsed, slotForCastingTime, spendSlot } 
 import { weaponAttack } from '../rules/weapons';
 import { spellRolls } from '../rules/spells';
 import { d20With } from '../rules/dice';
+import { applyHealing } from '../rules/hp';
+import { allSpells, breathWeapon, castingFor, freeCastKey, hasFreeCast, spendFeature, usesLeft, type FeatureDef } from '../rules/origin';
 import { Icon } from '../ui/Icon';
 import { TabBar } from '../ui/TabBar';
 import { CardList, useAccordion, type CardItem } from '../ui/Accordion';
@@ -54,16 +56,24 @@ export function CombatScreen({ c }: { c: Character }) {
     }, [...facesOf(hit.result), ...facesOf(dmg.result).slice(0, 2)], slot);
   };
 
-  const cast = (s: Spell, slot: EconomySlot) => {
-    const level = pickSlot(s.level, c.spellSlotsUsed, d.slotsMax);
+  const cast = (s: Spell, cs: CharacterSpell, slot: EconomySlot) => {
+    const k = castingFor(c, cs, d.spellAbility);
+    // Feat and lineage spells: one free cast per long rest, then slots if the class has them.
+    const free = s.level > 0 && hasFreeCast(c, cs);
+    const level = free ? s.level : pickSlot(s.level, c.spellSlotsUsed, d.slotsMax);
     if (level === null) {
-      overlay.show({ kicker: s.name, total: '0', title: `No ${ordinal(s.level)}-level slots left`, calc: 'Take a rest, or tap a used slot on the sheet to restore it.' }, []);
+      overlay.show({ kicker: s.name, total: '0', title: cs.source ? 'Free cast used' : `No ${ordinal(s.level)}-level slots left`, calc: cs.source ? 'It comes back after a long rest.' : 'Take a rest, or tap a used slot on the sheet to restore it.' }, []);
       return;
     }
-    const slotText = level > 0 ? `uses a ${ordinal(level)}-level slot` : 'cantrip';
-    set((x) => ({ ...x, spellSlotsUsed: spendSlot(x.spellSlotsUsed, level), concentration: s.concentration ? s.id : x.concentration }));
-    const rolls = spellRolls(s, Math.max(level, s.level), c.level, d.spellMod);
-    if (s.attack && rolls[0]) return attack(s.name, d.spellAttack, rolls[0].expression, s.damageType ?? '', slot, slotText);
+    const slotText = free ? 'free cast, back after a long rest' : level > 0 ? `uses a ${ordinal(level)}-level slot` : 'cantrip';
+    set((x) => ({
+      ...x,
+      spellSlotsUsed: free ? x.spellSlotsUsed : spendSlot(x.spellSlotsUsed, level),
+      featureUses: free ? { ...x.featureUses, [freeCastKey(s.id)]: 1 } : x.featureUses,
+      concentration: s.concentration ? s.id : x.concentration,
+    }));
+    const rolls = spellRolls(s, Math.max(level, s.level), c.level, k.mod);
+    if (s.attack && rolls[0]) return attack(s.name, k.attack, rolls[0].expression, s.damageType ?? '', slot, slotText);
     if (rolls[0]) {
       const r = roll(rolls[0].expression, rolls[0].label, opts);
       if (!r) return;
@@ -71,11 +81,11 @@ export function CombatScreen({ c }: { c: Character }) {
       return show({
         kicker: heal ? 'Hit points regained' : `${cap(s.damageType ?? '')} damage`.trim(),
         total: r.total,
-        title: s.save ? `${s.name}: ${s.save.toUpperCase()} save DC ${d.spellDC}` : s.name,
+        title: s.save ? `${s.name}: ${s.save.toUpperCase()} save DC ${k.dc}` : s.name,
         calc: `${calcText(r.result)} = ${r.total} · ${slotText}`,
       }, facesOf(r.result), slot);
     }
-    show({ kicker: s.save ? `${s.save.toUpperCase()} save` : 'Cast', total: s.save ? `DC ${d.spellDC}` : '✓', title: s.name, calc: `${excerpt(s.description, 140)} · ${slotText}` }, [], slot);
+    show({ kicker: s.save ? `${s.save.toUpperCase()} save` : 'Cast', total: s.save ? `DC ${k.dc}` : '✓', title: s.name, calc: `${excerpt(s.description, 140)} · ${slotText}` }, [], slot);
   };
 
   const check = (label: string, mod: number, slot: EconomySlot) => {
@@ -90,21 +100,22 @@ export function CombatScreen({ c }: { c: Character }) {
   const ready = useMemo(() => {
     if (!spells) return [];
     const byId = new Map(spells.map((s) => [s.id, s]));
-    return c.spells.map((cs) => ({ cs, s: byId.get(cs.id)! })).filter((x) => x.s && (x.s.level === 0 || x.cs.prepared)).map((x) => x.s)
-      .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  }, [spells, c.spells]);
+    return allSpells(c).map((cs) => ({ cs, s: byId.get(cs.id)! })).filter((x) => x.s && (x.s.level === 0 || x.cs.prepared))
+      .sort((a, b) => a.s.level - b.s.level || a.s.name.localeCompare(b.s.name));
+  }, [spells, c]);
 
-  const spellAction = (s: Spell, slot: EconomySlot): Action => {
-    const r = spellRolls(s, Math.max(1, s.level), c.level, d.spellMod)[0];
+  const spellAction = ({ s, cs }: { s: Spell; cs: CharacterSpell }, slot: EconomySlot): Action => {
+    const k = castingFor(c, cs, d.spellAbility);
+    const r = spellRolls(s, Math.max(1, s.level), c.level, k.mod)[0];
     const facts: [string, string][] = [['Level', ordinal(s.level)], ['Range', s.range]];
-    if (s.attack) facts.push(['To hit', signed(d.spellAttack)]);
-    if (s.save) facts.push(['Save', `${s.save.toUpperCase()} DC ${d.spellDC}`]);
+    if (s.attack) facts.push(['To hit', signed(k.attack)]);
+    if (s.save) facts.push(['Save', `${s.save.toUpperCase()} DC ${k.dc}`]);
     if (r) facts.push([s.heal && !s.damage ? 'Healing' : 'Damage', `${prettyExpr(r.expression)}${s.damageType ? ` ${s.damageType}` : ''}`]);
     if (facts.length < 4) facts.push(['Duration', s.duration]);
     return {
-      key: `${slot}-${s.id}`, name: s.name, level: s.level, kind: cap(s.school), verb: 'Cast',
-      short: `${s.level === 0 ? (s.attack ? signed(d.spellAttack) : 'Cantrip') : ordinal(s.level)}${r ? ` · ${prettyExpr(r.expression)}` : ''}`,
-      facts, text: excerpt(s.description, 180), go: () => cast(s, slot),
+      key: `${slot}-${s.id}`, name: s.name, level: s.level, kind: cs.source === 'lineage' ? 'Lineage' : cs.source === 'feat' ? 'Feat' : cap(s.school), verb: 'Cast',
+      short: `${s.level === 0 ? (s.attack ? signed(k.attack) : 'Cantrip') : ordinal(s.level)}${r ? ` · ${prettyExpr(r.expression)}` : ''}${s.level > 0 && hasFreeCast(c, cs) ? ' · free' : ''}`,
+      facts, text: excerpt(s.description, 180), go: () => cast(s, cs, slot),
     };
   };
   const weaponAction = (i: (typeof weapons)[number], slot: EconomySlot, opportunity = false): Action => {
@@ -116,16 +127,67 @@ export function CombatScreen({ c }: { c: Character }) {
       facts: opportunity
         ? [['Trigger', 'Foe leaves reach'], ['To hit', signed(a.toHit)], ['Damage', `${prettyExpr(a.damage)} ${w.damageType}`], ['Reach', a.rangeText]]
         : [['To hit', signed(a.toHit)], ['Damage', `${prettyExpr(a.damage)} ${w.damageType}`], ['Range', a.rangeText], [a.versatile ? 'Two hands' : 'Weight', a.versatile ? prettyExpr(a.versatile) : `${w.weight} lb`]],
-      text: opportunity ? 'Opportunity attack: strike a creature as it moves out of your reach.' : w.properties.length ? `Properties: ${w.properties.join(', ')}.` : undefined,
+      text: opportunity ? 'Opportunity attack: strike a creature as it moves out of your reach.'
+        : [d.attacks > 1 ? `Extra Attack: ${d.attacks} attacks per Attack action.` : '', d.sneakAttack && (w.properties.includes('finesse') || w.range === 'ranged') ? `Sneak Attack: +${d.sneakAttack} once per turn with advantage or an ally nearby.` : '', w.properties.length ? `Properties: ${w.properties.join(', ')}.` : ''].filter(Boolean).join(' ') || undefined,
       go: () => attack(i.name, a.toHit, a.damage, w.damageType, slot),
     };
   };
 
-  const bySlot = (slot: EconomySlot) => ready.filter((s) => slotForCastingTime(s.castingTime) === slot).map((s) => spellAction(s, slot));
+  const bySlot = (slot: EconomySlot) => ready.filter((x) => slotForCastingTime(x.s.castingTime) === slot).map((x) => spellAction(x, slot));
+
+  // ---- Species and feat features that take an action ----
+  const useFeature = (f: FeatureDef, slot: EconomySlot, after?: () => void) => {
+    if (!usesLeft(c, f)) {
+      overlay.show({ kicker: f.name, total: '0', title: 'No uses left', calc: f.uses?.recharge === 'long' ? 'It comes back after a long rest.' : 'It comes back after a short or long rest.' }, []);
+      return;
+    }
+    set((x) => spendFeature(x, f));
+    if (after) return after();
+    show({ kicker: f.name, total: '✓', title: f.name, calc: `${excerpt(f.text || 'See the Player’s Handbook for the rules.', 160)} · ${usesLeft(c, f) - 1} left` }, [], slot);
+  };
+  const featureAction = (f: FeatureDef, slot: EconomySlot): Action => {
+    const left = usesLeft(c, f);
+    if (f.id === 'breath-weapon') {
+      const b = breathWeapon(c);
+      return {
+        key: `${slot}-${f.id}`, name: 'Breath Weapon', level: 2, kind: 'Species', verb: 'Breathe',
+        short: `DEX DC ${b.dc} · ${b.damage} ${b.type}`,
+        facts: [['Area', '15-ft cone or 30-ft line'], ['Save', `DEX DC ${b.dc}`], ['Damage', `${b.damage} ${b.type}`], ['Uses', `${left} of ${f.uses!.max}`]],
+        text: 'Replaces one attack of the Attack action. Half damage on a successful save.',
+        go: () => useFeature(f, slot, () => {
+          const r = roll(b.damage, `Breath Weapon (${b.type})`, opts);
+          if (r) show({ kicker: `${cap(b.type)} damage`, total: r.total, title: `Breath Weapon: DEX save DC ${b.dc}`, calc: `${calcText(r.result)} = ${r.total} · half on a save · ${left - 1} left` }, facesOf(r.result), slot);
+        }),
+      };
+    }
+    if (f.id === 'class-second-wind') {
+      const expr = `1d10+${c.level}`;
+      return {
+        key: `${slot}-${f.id}`, name: f.name, level: 1, kind: f.source, verb: 'Catch your breath',
+        short: `Heal ${prettyExpr(expr)} · ${left} left`,
+        facts: [['Healing', prettyExpr(expr)], ['Uses', `${left} of ${f.uses!.max}`], ['Back after', 'One per short rest']],
+        text: excerpt(f.text, 180),
+        go: () => useFeature(f, slot, () => {
+          const r = roll(expr, 'Second Wind', opts);
+          if (!r) return;
+          set((x) => applyHealing(x, r.total));
+          show({ kicker: 'Hit points regained', total: r.total, title: 'Second Wind', calc: `${calcText(r.result)} = ${r.total} · now ${Math.min(c.hp.max, c.hp.current + r.total)} of ${c.hp.max} · ${left - 1} left` }, facesOf(r.result), slot);
+        }),
+      };
+    }
+    return {
+      key: `${slot}-${f.id}`, name: f.name, level: 1, kind: f.source, verb: 'Use',
+      short: `${left} of ${f.uses!.max} left`,
+      facts: [['Uses', `${left} of ${f.uses!.max}`], ['Back after', f.uses!.recharge === 'short' ? 'Short rest' : f.uses!.recharge === 'short-one' ? 'One per short rest' : 'Long rest']],
+      text: f.text ? excerpt(f.text, 180) : 'See the Player’s Handbook for the rules.',
+      go: () => useFeature(f, slot),
+    };
+  };
+  const featuresFor = (slot: EconomySlot) => d.features.filter((f) => f.slot === slot && f.uses && !f.pool).map((f) => featureAction(f, slot));
   const melee = weapons.find((i) => weaponById(i.weaponId)!.range === 'melee');
   const all: Record<EconomySlot, Action[]> = {
-    action: [...bySlot('action'), ...weapons.map((i) => weaponAction(i, 'action'))],
-    bonus: bySlot('bonus'),
+    action: [...bySlot('action'), ...weapons.map((i) => weaponAction(i, 'action')), ...featuresFor('action')],
+    bonus: [...bySlot('bonus'), ...featuresFor('bonus')],
     reaction: [...bySlot('reaction'), ...(melee ? [weaponAction(melee, 'reaction', true)] : [])],
   };
   const items: CardItem[] = all[tab].map((a) => ({

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import type { Character } from '../types';
 import { useStore } from '../store/characters';
 import { derive } from '../rules/derived';
+import { allSpells, castingFor } from '../rules/origin';
+import { preparedSpells } from '../rules/classes';
 import { maxSpellLevel } from '../rules/slots';
 import { Icon } from '../ui/Icon';
 import { useSpells } from '../ui/useSpells';
@@ -23,10 +25,11 @@ export function SpellBookScreen({ c }: { c: Character }) {
   const d = derive(c);
   const [query, setQuery] = useState('');
   const [level, setLevel] = useState<number | null>(null);
-  const [mine, setMine] = useState(c.spells.length > 0);
+  const mineAll = allSpells(c);
+  const [mine, setMine] = useState(mineAll.length > 0);
   const [open, setOpen] = useState<string | null>(null);
   const top = Math.max(1, maxSpellLevel(d.cls?.casterType ?? 'none', c.level));
-  const has = (id: string) => c.spells.find((s) => s.id === id);
+  const has = (id: string) => mineAll.find((s) => s.id === id);
 
   const q = query.trim().toLowerCase();
   const list = (spells ?? [])
@@ -36,10 +39,10 @@ export function SpellBookScreen({ c }: { c: Character }) {
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
   const toggleKnown = (id: string) => update(c.id, (x) => ({
-    ...x, spells: x.spells.some((s) => s.id === id) ? x.spells.filter((s) => s.id !== id) : [...x.spells, { id, prepared: true }],
+    ...x, spells: x.spells.some((s) => s.id === id) ? x.spells.filter((s) => s.id !== id || !!s.source) : [...x.spells, { id, prepared: true }],
   }));
   const togglePrepared = (id: string) => update(c.id, (x) => ({ ...x, spells: x.spells.map((s) => (s.id === id ? { ...s, prepared: !s.prepared } : s)) }));
-  const prepared = c.spells.filter((s) => s.prepared).length;
+  const prepared = mineAll.filter((s) => s.prepared).length;
 
   return (
     <div className="screen">
@@ -49,7 +52,7 @@ export function SpellBookScreen({ c }: { c: Character }) {
           <Link to="/" className="gr-btn gr-btn--secondary gr-btn--icon ico-btn" aria-label="Back to sheet"><Icon name="back" /></Link>
           <div className="col" style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <h1 className="sub" style={{ margin: 0, font: '600 22px/1.15 var(--font-heading)' }}>Spellbook</h1>
-            <span className="muted">{c.spells.length} known · {prepared} prepared · up to {ordinal(top)} level</span>
+            <span className="muted">{mineAll.length} known · {prepared}{preparedSpells(c.classId, c.level) ? ` of ${preparedSpells(c.classId, c.level) + mineAll.filter((s) => s.source).length}` : ''} prepared · up to {ordinal(top)} level</span>
           </div>
         </div>
         <div className="gr-search">
@@ -77,8 +80,8 @@ export function SpellBookScreen({ c }: { c: Character }) {
               const k = has(s.id);
               return (
                 <div key={s.id} className={`sprow${open === s.id ? ' open' : ''}`}>
-                  <button className={k ? 'eq on' : 'eq'} style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink)' }}
-                    onClick={() => toggleKnown(s.id)} aria-pressed={!!k} aria-label={`${k ? 'Forget' : 'Learn'} ${s.name}`}>
+                  <button className={k ? 'eq on' : 'eq'} style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 0, cursor: k?.source ? 'default' : 'pointer', color: 'var(--ink)' }}
+                    onClick={() => !k?.source && toggleKnown(s.id)} disabled={!!k?.source} aria-pressed={!!k} aria-label={k?.source ? `${s.name}, from your ${k.source}` : `${k ? 'Forget' : 'Learn'} ${s.name}`}>
                     <span style={{ width: 22, height: 22, boxSizing: 'border-box', border: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: k ? 'var(--accent)' : 'var(--paper)', color: 'var(--on-accent)' }}>
                       {k && <Icon name="check" style={{ width: 14, height: 14, strokeWidth: 3 }} />}
                     </span>
@@ -87,7 +90,9 @@ export function SpellBookScreen({ c }: { c: Character }) {
                     <button className="spname" onClick={() => setOpen(open === s.id ? null : s.id)} aria-expanded={open === s.id}>{s.name}</button>
                     <span className="muted">{ordinal(s.level)} · {cap(s.school)} · {s.castingTime}{s.concentration ? ' · C' : ''}{s.ritual ? ' · R' : ''}</span>
                   </div>
-                  {k && s.level > 0 ? (
+                  {k?.source ? (
+                    <span className="gr-tag gr-tag--gilt" title={`Always prepared; ${castingFor(c, k, d.spellAbility).ability.toUpperCase()} DC ${castingFor(c, k, d.spellAbility).dc}`}>{k.source === 'lineage' ? 'Lineage' : 'Feat'}</span>
+                  ) : k && s.level > 0 ? (
                     <button className={`gr-chip filter${k.prepared ? ' is-on' : ''}`} aria-pressed={k.prepared} onClick={() => togglePrepared(s.id)}>Prepared</button>
                   ) : <span />}
                   {open === s.id && <p className="spdesc">{s.range} · {s.duration} · {s.components}. {excerpt(s.description, 600)}</p>}

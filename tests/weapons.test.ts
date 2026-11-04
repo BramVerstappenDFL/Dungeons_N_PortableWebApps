@@ -34,4 +34,9 @@ describe('weaponAttack', () => {
   it('gives reach weapons 10 feet', () => {
     expect(weaponAttack(c, weaponById('glaive')!).rangeText).toBe('10 feet');
   });
+  it('adds Archery to ranged attacks', () => {
+    const bow = weaponById('longbow')!;
+    const c = makeCharacter({ level: 1, abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 } });
+    expect(weaponAttack({ ...c, feats: [{ id: 'archery', level: 1 }] }, bow).toHit).toBe(weaponAttack(c, bow).toHit + 2);
+  });
 });

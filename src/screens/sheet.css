@@ -30,3 +30,28 @@
 .charrow:hover { background: var(--accent-100); }
 .charrow.is-on { background: var(--accent-100); }
 @media (prefers-reduced-motion: reduce) { .xpbar.is-gaining, .xpbar.is-levelup .xpbar__fill, .lvl-pop, .gain-tag { animation: none; } .xpbar__fill { transition: none; } }
+.origin-facts { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 10px 12px; background: var(--paper); border: 2px solid var(--ink); box-shadow: var(--shadow-sm); }
+.origin-facts > div { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: baseline; }
+.origin-facts dt { font-size: 11px; }
+.origin-facts dd { margin: 0; font-size: 14.5px; }
+.feats { display: flex; flex-direction: column; }
+.feat { padding: 10px 12px 10px 14px; border-top: 2px solid var(--ink); border-left: 5px solid var(--tincture, var(--accent)); }
+.feat:first-child { border-top: 0; }
+.feat details > summary { display: flex; align-items: baseline; gap: 8px; cursor: pointer; list-style: none; }
+.feat details > summary::-webkit-details-marker { display: none; }
+.feat details > summary::before { content: ''; flex: none; width: 7px; height: 7px; border: 2px solid var(--ink); border-left: 0; border-top: 0; transform: rotate(-45deg); transition: transform .2s cubic-bezier(.2,.8,.2,1); align-self: center; }
+.feat details[open] > summary::before { transform: rotate(45deg); }
+.feat__name { flex: 1; font-weight: 700; }
+.feat__src { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.feat__text { margin: 8px 0 0; font-size: 14.5px; line-height: 1.45; animation: cr-feat-open .28s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes cr-feat-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.feat__uses { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.pips { display: flex; gap: 8px; }
+.pip { width: 20px; height: 20px; padding: 0; border: 2px solid var(--ink); background: var(--gilt); box-shadow: var(--shadow-sm); transform: rotate(45deg) scale(.8); cursor: pointer; transition: background .18s, box-shadow .18s, transform .18s cubic-bezier(.2,.8,.2,1); }
+.pip.spent { background: var(--neutral-300); box-shadow: none; transform: rotate(45deg) scale(.7) translate(1px, 1px); }
+.pip:active { transform: rotate(45deg) scale(.6); }
+@media (prefers-reduced-motion: reduce) { .feat__text, .pip, .feat details > summary::before { animation: none; transition: none; } }
+.lvl-ready { flex: none; text-decoration: none; animation: lvl-glow 2.4s cubic-bezier(.2,.8,.2,1) infinite; }
+.lvl-ready.lvl-pop { animation: lvl-pop .5s cubic-bezier(.2,.8,.2,1) both, lvl-glow 2.4s cubic-bezier(.2,.8,.2,1) .5s infinite; }
+@keyframes lvl-glow { 0%, 70%, 100% { box-shadow: var(--shadow-gilt); } 35% { box-shadow: 5px 5px 0 var(--gilt); } }
+@media (prefers-reduced-motion: reduce) { .lvl-ready, .lvl-ready.lvl-pop { animation: none; } }
